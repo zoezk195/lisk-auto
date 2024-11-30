@@ -13,7 +13,7 @@ This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain a
 
 1. Clone the repository to your local machine:
    ```bash
-	git clone https://github.com/recitativonika/lisk-auto.git
+   git clone https://github.com/recitativonika/lisk-auto.git
    ```
 2. Navigate to the project directory:
    ```bash
