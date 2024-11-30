@@ -1,5 +1,6 @@
 const fs = require('fs');
 const Web3 = require('web3');
+const axios = require('axios');
 const { ethAmountRange, delay, unwarpPercentage } = require('./config');
 
 const WETH_ADDRESS = '0x4200000000000000000000000000000000000006';
@@ -53,6 +54,95 @@ function printHeader() {
     console.log(`${TEXT_COLORS.YELLOW}${centerAlignText("****************************************", terminalWidth)}${TEXT_COLORS.RESET_COLOR}`);
     console.log("");
 }
+
+const fetchtask = async address => {
+    try {
+        const taskPayload = gettask(address);
+        const response = await axios.post("https://portal-api.lisk.com/graphql", taskPayload, {
+            'headers': {
+                'Content-Type': "application/json",
+                'Accept': "application/json",
+                'User-Agent': "Mozilla/5.0"
+            }
+        });
+        const tasks = response.data?.data?.userdrop?.user?.tasks?.flatMap(taskGroup => taskGroup.tasks) || [];
+        return tasks.filter(task => !task.progress.isCompleted);
+    } catch (error) {
+        console.error(`${TEXT_COLORS.RED}Error fetching tasks: ${error.response?.data || error.message}${TEXT_COLORS.RESET_COLOR}`);
+        return [];
+    }
+};
+
+const gettask = address => ({
+    'query': `
+    query AirdropUser($filter: UserFilter!, $tasksFilter: QueryFilter) {
+      userdrop {
+        user(filter: $filter) {
+          tasks(filter: $tasksFilter) {
+            tasks {
+              id
+              description
+              progress {
+                isCompleted
+              }
+            }
+          }
+        }
+      }
+    }
+  `,
+    'variables': {
+        'filter': {
+            'address': address
+        }
+    }
+});
+
+const taskclaim = async (address, taskId, taskDescription, index) => {
+    try {
+        console.log(`${TEXT_COLORS.CYAN}[${index}] Claiming task: ${taskDescription} (${taskId})${TEXT_COLORS.RESET_COLOR}`);
+        const taskPayload = claimpayload(address, taskId);
+        const response = await axios.post("https://portal-api.lisk.com/graphql", taskPayload, {
+            'headers': {
+                'Content-Type': "application/json",
+                'Accept': "application/json",
+                'User-Agent': "Mozilla/5.0"
+            }
+        });
+        const updateStatus = response.data?.data?.userdrop?.updateTaskStatus;
+        if (updateStatus?.success) {
+            console.log(`${TEXT_COLORS.GREEN}[${index}] Task ${taskDescription} (${taskId}) successfully claimed!${TEXT_COLORS.RESET_COLOR}`);
+        } else {
+            console.log(`${TEXT_COLORS.RED}[${index}] Failed to claim task ${taskDescription} (${taskId})${TEXT_COLORS.RESET_COLOR}`);
+        }
+    } catch (error) {
+        console.error(`${TEXT_COLORS.RED}[${index}] Error claiming task ${taskDescription} (${taskId}): ${error.response?.data || error.message}${TEXT_COLORS.RESET_COLOR}`);
+    }
+};
+
+const claimpayload = (address, taskId) => ({
+    'query': `
+    mutation UpdateAirdropTaskStatus($input: UpdateTaskStatusInputData!) {
+      userdrop {
+        updateTaskStatus(input: $input) {
+          success
+          progress {
+            isCompleted
+            completedAt
+          }
+        }
+      }
+    }
+  `,
+    'variables': {
+        'input': {
+            'address': address,
+            'taskID': taskId
+        }
+    }
+});
+
+
 
 async function executeWrapETH(account, amount, index) {
     try {
@@ -139,6 +229,15 @@ async function transferToSelf(account, amount, index) {
     }
 }
 
+async function processTasksForAccount(address, index) {
+    console.log(`${TEXT_COLORS.CYAN}[${index}] Fetching and claiming tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
+    const tasks = await fetchtask(address);
+    for (const task of tasks) {
+        await taskclaim(address, task.id, task.description, index);
+    }
+    console.log(`${TEXT_COLORS.GREEN}[${index}] Finished processing tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
+}
+
 function startCycle(filePath) {
     let isFirstCycle = true;
 
@@ -162,6 +261,8 @@ function startCycle(filePath) {
             await executeWrapETH(privateKey, wrapAmount, i + 1);
             await transferToSelf(privateKey, transferAmount, i + 1);
             await unwarpETH(privateKey, wrapAmount, i + 1);
+            const accountObj = web3.eth.accounts.privateKeyToAccount(privateKey);
+            await processTasksForAccount(accountObj.address, i + 1);
         }
         console.log(`${TEXT_COLORS.GREEN}Script cycle complete${TEXT_COLORS.RESET_COLOR}`);
 
