@@ -2,6 +2,7 @@ const fs = require('fs');
 const Web3 = require('web3');
 const axios = require('axios');
 const readline = require('readline');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const { ethAmountRange, delay, unwarpPercentage } = require('./config');
 
 const WETH_ADDRESS = '0x4200000000000000000000000000000000000006';
@@ -68,10 +69,10 @@ function printHeader() {
     console.log("");
 }
 
-const fetchtask = async address => {
+const fetchtask = async (address, axiosInstance) => {
     try {
         const taskPayload = gettask(address);
-        const response = await axios.post("https://portal-api.lisk.com/graphql", taskPayload, {
+        const response = await axiosInstance.post("https://portal-api.lisk.com/graphql", taskPayload, {
             'headers': {
                 'Content-Type': "application/json",
                 'Accept': "application/json",
@@ -111,11 +112,11 @@ const gettask = address => ({
     }
 });
 
-const taskclaim = async (address, taskId, taskDescription, index) => {
+const taskclaim = async (address, taskId, taskDescription, index, axiosInstance) => {
     try {
         console.log(`${TEXT_COLORS.CYAN}[${index}] Claiming task: ${taskDescription} (${taskId})${TEXT_COLORS.RESET_COLOR}`);
         const taskPayload = claimpayload(address, taskId);
-        const response = await axios.post("https://portal-api.lisk.com/graphql", taskPayload, {
+        const response = await axiosInstance.post("https://portal-api.lisk.com/graphql", taskPayload, {
             'headers': {
                 'Content-Type': "application/json",
                 'Accept': "application/json",
@@ -240,9 +241,12 @@ async function transferToSelf(account, amount, index) {
     }
 }
 
-async function processtask(address, index, claimTasks) {
-    console.log(`${TEXT_COLORS.CYAN}[${index}] Fetching tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
-    const tasks = await fetchtask(address);
+async function processtask(address, index, claimTasks, axiosInstance, proxy) {
+    const proxyInfo = proxy ? ` (Proxy: ${proxy})` : '';
+    if (proxy) {
+        console.log(`${TEXT_COLORS.CYAN}[${index}] Fetching tasks for address: ${address}${proxyInfo}${TEXT_COLORS.RESET_COLOR}`);
+    }
+    const tasks = await fetchtask(address, axiosInstance);
 
     if (tasks.length === 0) {
         console.log(`${TEXT_COLORS.YELLOW}[${index}] No tasks to claim for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
@@ -251,7 +255,7 @@ async function processtask(address, index, claimTasks) {
 
     if (claimTasks) {
         for (const task of tasks) {
-            await taskclaim(address, task.id, task.description, index);
+            await taskclaim(address, task.id, task.description, index, axiosInstance);
         }
         console.log(`${TEXT_COLORS.GREEN}[${index}] Finished processing tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
     } else {
@@ -263,12 +267,26 @@ async function startCycle(filePath) {
     printHeader();
 
     console.log("");
-    const claimAnswer = await askQuestion(`${TEXT_COLORS.YELLOW}Please choose an option:\n1. Execute both transactions (TX) and claim tasks\n2. Execute only transactions (TX)\nEnter your choice (1/2): ${TEXT_COLORS.RESET_COLOR}`);
-    const claimTasks = claimAnswer.trim() === '1';
+    const actionAnswer = await askQuestion(`${TEXT_COLORS.YELLOW}Please choose an option:\n1. Execute both transactions (TX) and claim tasks\n2. Execute only transactions (TX)\n3. Execute only task claims\nEnter your choice (1/2/3): ${TEXT_COLORS.RESET_COLOR}`);
+    const executeTransactions = actionAnswer.trim() === '1' || actionAnswer.trim() === '2';
+    const claimTasks = actionAnswer.trim() === '1' || actionAnswer.trim() === '3';
+
+    const useProxyAnswer = await askQuestion(`${TEXT_COLORS.YELLOW}Do you want to use proxies?, proxy only used in task claim not in TX (1 for Yes, 2 for No): ${TEXT_COLORS.RESET_COLOR}`);
+    const useProxy = useProxyAnswer.trim() === '1';
+
+    let proxies = [];
+    if (useProxy) {
+        proxies = fs.readFileSync('proxy.txt', 'utf-8').split('\n').filter(Boolean).map(proxy => {
+            if (!proxy.startsWith('http://') && !proxy.startsWith('https://')) {
+                return `http://${proxy}`;
+            }
+            return proxy;
+        });
+    }
 
     let isFirstCycle = true;
 
-    const processCycle = async () => {
+    async function processCycle() {
         if (isFirstCycle) {
             console.log(`${TEXT_COLORS.YELLOW}Starting the script${TEXT_COLORS.RESET_COLOR}`);
             isFirstCycle = false;
@@ -283,13 +301,25 @@ async function startCycle(filePath) {
                 console.error(`${TEXT_COLORS.RED}[${i + 1}] Invalid private key length: ${privateKey}${TEXT_COLORS.RESET_COLOR}`);
                 continue;
             }
-            const wrapAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
-            const transferAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
-            await executeWrapETH(privateKey, wrapAmount, i + 1);
-            await transferToSelf(privateKey, transferAmount, i + 1);
-            await unwarpETH(privateKey, wrapAmount, i + 1);
-            const accountObj = web3.eth.accounts.privateKeyToAccount(privateKey);
-            await processtask(accountObj.address, i + 1, claimTasks);
+
+            const proxy = useProxy ? proxies[i % proxies.length] : null;
+            const axiosInstance = axios.create({
+                ...(proxy && { httpsAgent: new HttpsProxyAgent(proxy) })
+            });
+
+            if (executeTransactions) {
+                const wrapAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
+                const transferAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
+
+                await executeWrapETH(privateKey, wrapAmount, i + 1);
+                await transferToSelf(privateKey, transferAmount, i + 1);
+                await unwarpETH(privateKey, wrapAmount, i + 1);
+            }
+
+            if (claimTasks) {
+                const accountObj = web3.eth.accounts.privateKeyToAccount(privateKey);
+                await processtask(accountObj.address, i + 1, claimTasks, axiosInstance, proxy);
+            }
         }
         console.log(`${TEXT_COLORS.GREEN}Script cycle complete${TEXT_COLORS.RESET_COLOR}`);
 
