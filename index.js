@@ -253,9 +253,9 @@ async function processtask(address, index, claimTasks) {
         for (const task of tasks) {
             await taskclaim(address, task.id, task.description, index);
         }
-        console.log(`${TEXT_COLORS.GREEN}[${index}] Finished claiming tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
+        console.log(`${TEXT_COLORS.GREEN}[${index}] Finished processing tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
     } else {
-        console.log(`${TEXT_COLORS.YELLOW}[${index}] Skipped claiming tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
+        console.log(`${TEXT_COLORS.YELLOW}[${index}] Skipped processing tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
     }
 }
 
