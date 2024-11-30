@@ -31,8 +31,13 @@ This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain a
    privkey1
    privkey2
    ```
-   if you dont want to use proxy, you don't need to put the proxy.
-3. Run the script:
+   if you want to use proxy, add proxy in `proxy.txt` with thiw format:
+   ```
+   proxy1
+   proxy2
+   ```
+   proxy is used only when you choose to use and only in claim task.
+4. Run the script:
    ```bash
    node index.js
    ```
