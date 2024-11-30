@@ -1,6 +1,6 @@
 const fs = require('fs');
 const Web3 = require('web3');
-const { ethAmountRange, delay } = require('./config');
+const { ethAmountRange, delay, unwarpPercentage } = require('./config');
 
 const WETH_ADDRESS = '0x4200000000000000000000000000000000000006';
 const WETH_ABI = [
@@ -11,6 +11,15 @@ const WETH_ABI = [
         outputs: [],
         payable: true,
         stateMutability: 'payable',
+        type: 'function'
+    },
+    {
+        constant: false,
+        inputs: [{ name: 'wad', type: 'uint256' }],
+        name: 'withdraw',
+        outputs: [],
+        payable: false,
+        stateMutability: 'nonpayable',
         type: 'function'
     }
 ];
@@ -74,6 +83,35 @@ async function executeWrapETH(account, amount, index) {
     }
 }
 
+async function unwarpETH(account, amount, index) {
+    try {
+        const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+        const accountAddress = accountObj.address;
+        const contract = new web3.eth.Contract(WETH_ABI, WETH_ADDRESS);
+        const unwarpAmount = (amount * unwarpPercentage).toFixed(9);
+        console.log(`${TEXT_COLORS.GREEN}[${index}] Unwrapping ${unwarpPercentage * 100}% of WETH for address: ${accountAddress}, Amount: ${unwarpAmount} ETH${TEXT_COLORS.RESET_COLOR}`);
+
+        const valueInWei = web3.utils.toWei(unwarpAmount.toString(), 'ether');
+        const gasEstimate = await contract.methods.withdraw(valueInWei).estimateGas({ from: accountAddress });
+        const gasPrice = await web3.eth.getGasPrice();
+
+        const tx = {
+            from: accountAddress,
+            to: WETH_ADDRESS,
+            gas: gasEstimate,
+            gasPrice: gasPrice,
+            data: contract.methods.withdraw(valueInWei).encodeABI()
+        };
+
+        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+
+        console.log(`${TEXT_COLORS.GREEN}[${index}] Successfully unwrapped WETH. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+    } catch (error) {
+        console.error(`${TEXT_COLORS.RED}[${index}] Error unwrapping WETH: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+    }
+}
+
 async function transferToSelf(account, amount, index) {
     const accountObj = web3.eth.accounts.privateKeyToAccount(account);
     const accountAddress = accountObj.address;
@@ -115,6 +153,7 @@ function startCycle(filePath) {
             const transferAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
             await executeWrapETH(privateKey, wrapAmount, i + 1);
             await transferToSelf(privateKey, transferAmount, i + 1);
+            await unwarpETH(privateKey, wrapAmount, i + 1);
         }
         console.log(`${TEXT_COLORS.GREEN}Script cycle complete${TEXT_COLORS.RESET_COLOR}`);
 
