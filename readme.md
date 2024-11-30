@@ -31,7 +31,7 @@ This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain a
    privkey1
    privkey2
    ```
-   if you want to use proxy, add proxy in `proxy.txt` with thiw format:
+   if you want to use proxy, add proxy in `proxy.txt` with this format:
    ```
    proxy1
    proxy2
