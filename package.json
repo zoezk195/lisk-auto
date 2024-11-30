@@ -1,0 +1,26 @@
+{
+  "dependencies": {
+    "axios": "^1.7.8",
+    "web3": "^1.10.4"
+  },
+  "name": "lisk-auto",
+  "version": "1.0.0",
+  "description": "lisk auto",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/recitativonika/lisk-auto.git"
+  },
+  "keywords": [
+    "lisk"
+  ],
+  "author": "recitativonika",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/recitativonika/lisk-auto/issues"
+  },
+  "homepage": "https://github.com/recitativonika/lisk-auto#readme"
+}
