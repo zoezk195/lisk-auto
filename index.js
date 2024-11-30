@@ -140,8 +140,16 @@ async function transferToSelf(account, amount, index) {
 }
 
 function startCycle(filePath) {
+    let isFirstCycle = true;
+
     const processCycle = async () => {
-        console.log(`${TEXT_COLORS.YELLOW}Starting the script${TEXT_COLORS.RESET_COLOR}`);
+        if (isFirstCycle) {
+            console.log(`${TEXT_COLORS.YELLOW}Starting the script${TEXT_COLORS.RESET_COLOR}`);
+            isFirstCycle = false;
+        } else {
+            console.log(`${TEXT_COLORS.YELLOW}Resuming cycle...${TEXT_COLORS.RESET_COLOR}`);
+        }
+
         const privateKeys = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
         for (let i = 0; i < privateKeys.length; i++) {
             const privateKey = privateKeys[i].trim();
@@ -165,10 +173,7 @@ function startCycle(filePath) {
             console.log(`${TEXT_COLORS.CYAN}Waiting for the next cycle in ${delayInHours.toFixed(0)} hour(s)...${TEXT_COLORS.RESET_COLOR}`);
         }
 
-        setTimeout(() => {
-            console.log(`${TEXT_COLORS.YELLOW}Resuming cycle...${TEXT_COLORS.RESET_COLOR}`);
-            processCycle();
-        }, delay);
+        setTimeout(processCycle, delay);
     };
 
     printHeader();
