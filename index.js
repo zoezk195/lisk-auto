@@ -49,7 +49,7 @@ function printHeader() {
     const terminalWidth = process.stdout.columns || 80;
     console.log("");
     console.log(`${TEXT_COLORS.YELLOW}${centerAlignText("****************************************", terminalWidth)}${TEXT_COLORS.RESET_COLOR}`);
-    console.log(`${TEXT_COLORS.YELLOW}${centerAlignText("Lisk auto TX", terminalWidth)}${TEXT_COLORS.RESET_COLOR}`);
+    console.log(`${TEXT_COLORS.YELLOW}${centerAlignText("Lisk auto", terminalWidth)}${TEXT_COLORS.RESET_COLOR}`);
     console.log(`${TEXT_COLORS.YELLOW}${centerAlignText("github.com/recitativonika", terminalWidth)}${TEXT_COLORS.RESET_COLOR}`);
     console.log(`${TEXT_COLORS.YELLOW}${centerAlignText("****************************************", terminalWidth)}${TEXT_COLORS.RESET_COLOR}`);
     console.log("");
