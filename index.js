@@ -1,6 +1,7 @@
 const fs = require('fs');
 const Web3 = require('web3');
 const axios = require('axios');
+const readline = require('readline');
 const { ethAmountRange, delay, unwarpPercentage } = require('./config');
 
 const WETH_ADDRESS = '0x4200000000000000000000000000000000000006';
@@ -26,6 +27,18 @@ const WETH_ABI = [
 ];
 
 const web3 = new Web3('https://rpc.api.lisk.com');
+
+async function askQuestion(query) {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+
+    return new Promise(resolve => rl.question(query, ans => {
+        rl.close();
+        resolve(ans);
+    }));
+}
 
 function getRandomEthAmount(min, max) {
     return (Math.random() * (max - min) + min).toFixed(9);
@@ -142,8 +155,6 @@ const claimpayload = (address, taskId) => ({
     }
 });
 
-
-
 async function executeWrapETH(account, amount, index) {
     try {
         const accountObj = web3.eth.accounts.privateKeyToAccount(account);
@@ -229,16 +240,32 @@ async function transferToSelf(account, amount, index) {
     }
 }
 
-async function processTasksForAccount(address, index) {
-    console.log(`${TEXT_COLORS.CYAN}[${index}] Fetching and claiming tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
+async function processtask(address, index, claimTasks) {
+    console.log(`${TEXT_COLORS.CYAN}[${index}] Fetching tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
     const tasks = await fetchtask(address);
-    for (const task of tasks) {
-        await taskclaim(address, task.id, task.description, index);
+
+    if (tasks.length === 0) {
+        console.log(`${TEXT_COLORS.YELLOW}[${index}] No tasks to claim for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
+        return;
     }
-    console.log(`${TEXT_COLORS.GREEN}[${index}] Finished processing tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
+
+    if (claimTasks) {
+        for (const task of tasks) {
+            await taskclaim(address, task.id, task.description, index);
+        }
+        console.log(`${TEXT_COLORS.GREEN}[${index}] Finished claiming tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
+    } else {
+        console.log(`${TEXT_COLORS.YELLOW}[${index}] Skipped claiming tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
+    }
 }
 
-function startCycle(filePath) {
+async function startCycle(filePath) {
+    printHeader();
+
+    console.log("");
+    const claimAnswer = await askQuestion(`${TEXT_COLORS.YELLOW}Please choose an option:\n1. Execute both transactions (TX) and claim tasks\n2. Execute only transactions (TX)\nEnter your choice (1/2): ${TEXT_COLORS.RESET_COLOR}`);
+    const claimTasks = claimAnswer.trim() === '1';
+
     let isFirstCycle = true;
 
     const processCycle = async () => {
@@ -262,7 +289,7 @@ function startCycle(filePath) {
             await transferToSelf(privateKey, transferAmount, i + 1);
             await unwarpETH(privateKey, wrapAmount, i + 1);
             const accountObj = web3.eth.accounts.privateKeyToAccount(privateKey);
-            await processTasksForAccount(accountObj.address, i + 1);
+            await processtask(accountObj.address, i + 1, claimTasks);
         }
         console.log(`${TEXT_COLORS.GREEN}Script cycle complete${TEXT_COLORS.RESET_COLOR}`);
 
@@ -277,7 +304,6 @@ function startCycle(filePath) {
         setTimeout(processCycle, delay);
     };
 
-    printHeader();
     processCycle();
 }
 
