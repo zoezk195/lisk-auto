@@ -41,7 +41,7 @@ This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain a
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
 
 ## Note
-This script only for testing purpose, using this script might violates ToS and may get your account permanently banned.
+This script is for testing purposes only, using this script may violate ToS and may get your account permanently banned and I am not responsible for anything that happens with your account/wallet.
 
 My reff code if you want to use :) :
 ```bash
