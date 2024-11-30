@@ -4,7 +4,7 @@
 This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain and airdrop.
 
 ## Features
-- **Auto Send, wrap, unwrap ETH**
+- **Send, wrap, unwrap ETH and claim task of Lisk airdrop**
 
 ## Prerequisites
 - [Node.js](https://nodejs.org/) (version 12 or higher)
