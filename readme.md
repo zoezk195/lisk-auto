@@ -25,7 +25,7 @@ This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain a
    ```
 
 ## Usage
-1. Register to lisk airdrop page first and complete the mandatory taks, you can register [here](https://portal.lisk.com/airdrop) and use my code if you want :) : `oHRCaR` and please check how to complete the mandatory task in their website [here](https://lisk.com/blog/posts/lisk-lsk-airdrop/)
+1. Register to lisk airdrop page first and complete the mandatory taks, you can [register here](https://portal.lisk.com/airdrop) and use my code if you want :) : `oHRCaR` and please check how to complete the mandatory task in [their website here](https://lisk.com/blog/posts/lisk-lsk-airdrop/)
 2. Modify `priv.txt` with your private key of your wallet with format like this:
    ```bash
    privkey1
