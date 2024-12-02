@@ -38,7 +38,7 @@ This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain a
    ```
    proxy is used only when you choose to use and only in claim task.
 4. Edit `config.js` for change the delay, ETH range and percentage of unwrap ETH.
-   ```bash
+   ```
    module.exports = {
       ethAmountRange: {
          min: 0.00000001,
