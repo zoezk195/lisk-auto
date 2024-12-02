@@ -40,12 +40,12 @@ This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain a
 4. Edit `config.js` for change the delay, ETH range and percentage of unwrap ETH.
    ```
    module.exports = {
-      ethAmountRange: {
-         min: 0.00000001,
-         max: 0.0000001
-         }, // range of ETH amount that will be used and randomize
-         delay: 21600000, // 6 hour in milliseconds
-         unwarpPercentage: 0.95 // 95% of the wrapped amounts
+    ethAmountRange: {
+        min: 0.00000001,
+        max: 0.0000001
+    }, // range of ETH amount that will be used and randomize
+    delay: 21600000, // 6 hour in milliseconds
+    unwarpPercentage: 0.95 // 95% of the wrapped amounts
    };
    ```
 5. Run the script:
