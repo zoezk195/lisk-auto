@@ -46,7 +46,7 @@ This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain a
          }, // range of ETH amount that will be used and randomize
          delay: 21600000, // 6 hour in milliseconds
          unwarpPercentage: 0.95 // 95% of the wrapped amounts
-      };
+   };
    ```
 5. Run the script:
    ```bash
