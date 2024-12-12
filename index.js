@@ -166,6 +166,7 @@ async function executeWrapETH(account, amount, index) {
         const valueInWei = web3.utils.toWei(amount.toString(), 'ether');
         const gasEstimate = await contract.methods.deposit().estimateGas({ from: accountAddress, value: valueInWei });
         const gasPrice = await web3.eth.getGasPrice();
+        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
 
         const tx = {
             from: accountAddress,
@@ -173,6 +174,7 @@ async function executeWrapETH(account, amount, index) {
             value: valueInWei,
             gas: gasEstimate,
             gasPrice: gasPrice,
+            nonce: nonce,
             data: contract.methods.deposit().encodeABI()
         };
 
@@ -196,12 +198,14 @@ async function unwarpETH(account, amount, index) {
         const valueInWei = web3.utils.toWei(unwarpAmount.toString(), 'ether');
         const gasEstimate = await contract.methods.withdraw(valueInWei).estimateGas({ from: accountAddress });
         const gasPrice = await web3.eth.getGasPrice();
+        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
 
         const tx = {
             from: accountAddress,
             to: WETH_ADDRESS,
             gas: gasEstimate,
             gasPrice: gasPrice,
+            nonce: nonce,
             data: contract.methods.withdraw(valueInWei).encodeABI()
         };
 
@@ -223,13 +227,15 @@ async function transferToSelf(account, amount, index) {
         const valueInWei = web3.utils.toWei(amount.toString(), 'ether');
         const gasEstimate = await web3.eth.estimateGas({ from: accountAddress, to: accountAddress, value: valueInWei });
         const gasPrice = await web3.eth.getGasPrice();
+        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
 
         const tx = {
             from: accountAddress,
             to: accountAddress,
             value: valueInWei,
             gas: gasEstimate,
-            gasPrice: gasPrice
+            gasPrice: gasPrice,
+            nonce: nonce
         };
 
         const signedTx = await web3.eth.accounts.signTransaction(tx, account);
