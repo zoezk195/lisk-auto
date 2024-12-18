@@ -8,6 +8,8 @@ This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain a
 
 ## Prerequisites
 - [Node.js](https://nodejs.org/) (version 12 or higher)
+- Lisk ETH, [Bridge here](https://www.relay.link/bridge/lisk?fromChainId=1)
+- USDT, [Swap here](https://oku.trade/?inputChain=lisk&inToken=0x0000000000000000000000000000000000000000&outToken=0x05D032ac25d322df992303dCa074EE7392C117b9&outTokenAmount=%220.0002593012318621867%22&inTokenAmount=%220.0002593012318621867%22)
 
 ## Installation
 
