@@ -44,8 +44,8 @@ const UNIVERSAL_ROUTER_ABI = [
     }
 ];
 
-const USDT_ADDRESS = '0x87D3d9CA455DCc9a3Ba5605D2829d994922DD04F'; // Example USDT address
-const USDC_ADDRESS = '0x9052E8f0607736cB0085f5057cdCB1C783277040'; // Example USDC address
+const USDT_ADDRESS = '0x87D3d9CA455DCc9a3Ba5605D2829d994922DD04F';
+const USDC_ADDRESS = '0x9052E8f0607736cB0085f5057cdCB1C783277040';
 
 const web3 = new Web3('https://rpc.api.lisk.com');
 
@@ -287,7 +287,7 @@ async function swapUSDTToUSDC(account, index) {
 
         console.log(`${TEXT_COLORS.PURPLE}[${index}] Swapping USDT to USDC for address: ${accountAddress}, Amount: ${amountIn} USDT${TEXT_COLORS.RESET_COLOR}`);
 
-        const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes from the current time
+        const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
 
         const inputs = [inputMapping[amountIn]];
 
