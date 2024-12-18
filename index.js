@@ -27,6 +27,26 @@ const WETH_ABI = [
     }
 ];
 
+const UNIVERSAL_ROUTER_ADDRESS = '0x447B8E40B0CdA8e55F405C86bC635D02d0540aB8';
+const UNIVERSAL_ROUTER_ABI = [
+    {
+        "constant": false,
+        "inputs": [
+            { "name": "commands", "type": "bytes" },
+            { "name": "inputs", "type": "bytes[]" },
+            { "name": "deadline", "type": "uint256" }
+        ],
+        "name": "execute",
+        "outputs": [],
+        "payable": false,
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+];
+
+const USDT_ADDRESS = '0x87D3d9CA455DCc9a3Ba5605D2829d994922DD04F'; // Example USDT address
+const USDC_ADDRESS = '0x9052E8f0607736cB0085f5057cdCB1C783277040'; // Example USDC address
+
 const web3 = new Web3('https://rpc.api.lisk.com');
 
 async function askQuestion(query) {
@@ -247,6 +267,53 @@ async function transferToSelf(account, amount, index) {
     }
 }
 
+async function swapUSDTToUSDC(account, index) {
+    try {
+        const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+        const accountAddress = accountObj.address;
+        const contract = new web3.eth.Contract(UNIVERSAL_ROUTER_ABI, UNIVERSAL_ROUTER_ADDRESS);
+
+        const inputMapping = {
+            0.000008: "0x0000000000000000000000009052e8f0607736cb0085f5057cdcb1c783277040000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000700000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002bf242275d3a6527d877f2c927a82d9b057609cc7100006405d032ac25d322df992303dca074ee7392c117b9000000000000000000000000000000000000000000",
+            0.002231: "0x0000000000000000000000009052e8f0607736cb0085f5057cdcb1c78327704000000000000000000000000000000000000000000000000000000000000008b700000000000000000000000000000000000000000000000000000000000008a000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000",
+            0.000319: "0x0000000000000000000000009052e8f0607736cb0085f5057cdcb1c7832770400000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000013b00000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000",
+            0.000199: "0x0000000000000000000000009052e8f0607736cb0085f5057cdcb1c78327704000000000000000000000000000000000000000000000000000000000000000c800000000000000000000000000000000000000000000000000000000000000c500000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000"
+        };
+
+        const amounts = Object.keys(inputMapping);
+
+        const randomIndex = Math.floor(Math.random() * amounts.length);
+        const amountIn = parseFloat(amounts[randomIndex]);
+
+        console.log(`${TEXT_COLORS.PURPLE}[${index}] Swapping USDT to USDC for address: ${accountAddress}, Amount: ${amountIn} USDT${TEXT_COLORS.RESET_COLOR}`);
+
+        const deadline = Math.floor(Date.now() / 1000) + 60 * 20; // 20 minutes from the current time
+
+        const inputs = [inputMapping[amountIn]];
+
+        const gasEstimate = await contract.methods.execute('0x00', inputs, deadline).estimateGas({ from: accountAddress });
+
+        const gasPrice = await web3.eth.getGasPrice();
+        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+
+        const tx = {
+            from: accountAddress,
+            to: UNIVERSAL_ROUTER_ADDRESS,
+            gas: gasEstimate,
+            gasPrice: gasPrice,
+            nonce: nonce,
+            data: contract.methods.execute('0x00', inputs, deadline).encodeABI()
+        };
+
+        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+
+        console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully swapped USDT to USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+    } catch (error) {
+        console.error(`${TEXT_COLORS.RED}[${index}] Error swapping USDT to USDC: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+    }
+}
+
 async function processtask(address, index, claimTasks, axiosInstance, proxy) {
     const proxyInfo = proxy ? ` (Proxy: ${proxy})` : '';
     if (proxy) {
@@ -273,9 +340,10 @@ async function startCycle(filePath) {
     printHeader();
 
     console.log("");
-    const actionAnswer = await askQuestion(`${TEXT_COLORS.YELLOW}Please choose an option:\n1. Execute both transactions (TX) and claim tasks\n2. Execute only transactions (TX)\n3. Execute only task claims\nEnter your choice (1/2/3): ${TEXT_COLORS.RESET_COLOR}`);
+    const actionAnswer = await askQuestion(`${TEXT_COLORS.YELLOW}Please choose an option:\n1. Execute both transactions (TX) and claim tasks\n2. Execute only transactions (TX)\n3. Execute only task claims\n4. Execute only USDT to USDC swap\nEnter your choice (1/2/3/4): ${TEXT_COLORS.RESET_COLOR}`);
     const executeTransactions = actionAnswer.trim() === '1' || actionAnswer.trim() === '2';
     const claimTasks = actionAnswer.trim() === '1' || actionAnswer.trim() === '3';
+    const swapOnly = actionAnswer.trim() === '4';
 
     const useProxyAnswer = await askQuestion(`${TEXT_COLORS.YELLOW}Do you want to use proxies?, proxy only used in task claim not in TX (1 for Yes, 2 for No): ${TEXT_COLORS.RESET_COLOR}`);
     const useProxy = useProxyAnswer.trim() === '1';
@@ -293,52 +361,56 @@ async function startCycle(filePath) {
     let isFirstCycle = true;
 
     async function processCycle() {
-        if (isFirstCycle) {
-            console.log(`${TEXT_COLORS.YELLOW}Starting the script${TEXT_COLORS.RESET_COLOR}`);
-            isFirstCycle = false;
-        } else {
-            console.log(`${TEXT_COLORS.YELLOW}Resuming cycle...${TEXT_COLORS.RESET_COLOR}`);
+    if (isFirstCycle) {
+        console.log(`${TEXT_COLORS.YELLOW}Starting the script${TEXT_COLORS.RESET_COLOR}`);
+        isFirstCycle = false;
+    } else {
+        console.log(`${TEXT_COLORS.YELLOW}Resuming cycle...${TEXT_COLORS.RESET_COLOR}`);
+    }
+
+    const privateKeys = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
+    for (let i = 0; i < privateKeys.length; i++) {
+        const privateKey = privateKeys[i].trim();
+        if (privateKey.length !== 64 && !(privateKey.length === 66 && privateKey.startsWith('0x'))) {
+            console.error(`${TEXT_COLORS.RED}[${i + 1}] Invalid private key length: ${privateKey}${TEXT_COLORS.RESET_COLOR}`);
+            continue;
         }
 
-        const privateKeys = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
-        for (let i = 0; i < privateKeys.length; i++) {
-            const privateKey = privateKeys[i].trim();
-            if (privateKey.length !== 64 && !(privateKey.length === 66 && privateKey.startsWith('0x'))) {
-                console.error(`${TEXT_COLORS.RED}[${i + 1}] Invalid private key length: ${privateKey}${TEXT_COLORS.RESET_COLOR}`);
-                continue;
-            }
+        const proxy = useProxy ? proxies[i % proxies.length] : null;
+        const axiosInstance = axios.create({
+            ...(proxy && { httpsAgent: new HttpsProxyAgent(proxy) })
+        });
 
-            const proxy = useProxy ? proxies[i % proxies.length] : null;
-            const axiosInstance = axios.create({
-                ...(proxy && { httpsAgent: new HttpsProxyAgent(proxy) })
-            });
+        if (executeTransactions) {
+            const wrapAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
+            const transferAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
 
-            if (executeTransactions) {
-                const wrapAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
-                const transferAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
-
-                await executeWrapETH(privateKey, wrapAmount, i + 1);
-                await transferToSelf(privateKey, transferAmount, i + 1);
-                await unwarpETH(privateKey, wrapAmount, i + 1);
-            }
-
-            if (claimTasks) {
-                const accountObj = web3.eth.accounts.privateKeyToAccount(privateKey);
-                await processtask(accountObj.address, i + 1, claimTasks, axiosInstance, proxy);
-            }
-        }
-        console.log(`${TEXT_COLORS.GREEN}Script cycle complete${TEXT_COLORS.RESET_COLOR}`);
-
-        const delayInMinutes = delay / 60000;
-        const delayInHours = delayInMinutes / 60;
-        if (delayInMinutes < 60) {
-            console.log(`${TEXT_COLORS.CYAN}Waiting for the next cycle in ${delayInMinutes.toFixed(0)} minute(s)...${TEXT_COLORS.RESET_COLOR}`);
-        } else {
-            console.log(`${TEXT_COLORS.CYAN}Waiting for the next cycle in ${delayInHours.toFixed(0)} hour(s)...${TEXT_COLORS.RESET_COLOR}`);
+            await executeWrapETH(privateKey, wrapAmount, i + 1);
+            await transferToSelf(privateKey, transferAmount, i + 1);
+            await unwarpETH(privateKey, wrapAmount, i + 1);
         }
 
-        setTimeout(processCycle, delay);
-    };
+        if (swapOnly || executeTransactions) {
+            await swapUSDTToUSDC(privateKey, i + 1);
+        }
+
+        if (claimTasks) {
+            const accountObj = web3.eth.accounts.privateKeyToAccount(privateKey);
+            await processtask(accountObj.address, i + 1, claimTasks, axiosInstance, proxy);
+        }
+    }
+    console.log(`${TEXT_COLORS.GREEN}Script cycle complete${TEXT_COLORS.RESET_COLOR}`);
+
+    const delayInMinutes = delay / 60000;
+    const delayInHours = delayInMinutes / 60;
+    if (delayInMinutes < 60) {
+        console.log(`${TEXT_COLORS.CYAN}Waiting for the next cycle in ${delayInMinutes.toFixed(0)} minute(s)...${TEXT_COLORS.RESET_COLOR}`);
+    } else {
+        console.log(`${TEXT_COLORS.CYAN}Waiting for the next cycle in ${delayInHours.toFixed(0)} hour(s)...${TEXT_COLORS.RESET_COLOR}`);
+    }
+
+    setTimeout(processCycle, delay);
+};
 
     processCycle();
 }
