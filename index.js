@@ -44,8 +44,32 @@ const UNIVERSAL_ROUTER_ABI = [
     }
 ];
 
-const USDT_ADDRESS = '0x87D3d9CA455DCc9a3Ba5605D2829d994922DD04F';
-const USDC_ADDRESS = '0x9052E8f0607736cB0085f5057cdCB1C783277040';
+const ERC20_ABI = [
+    {
+        constant: false,
+        inputs: [
+            { name: 'spender', type: 'address' },
+            { name: 'value', type: 'uint256' }
+        ],
+        name: 'approve',
+        outputs: [{ name: '', type: 'bool' }],
+        payable: false,
+        stateMutability: 'nonpayable',
+        type: 'function'
+    },
+    {
+        constant: true,
+        inputs: [
+            { name: 'owner', type: 'address' },
+            { name: 'spender', type: 'address' }
+        ],
+        name: 'allowance',
+        outputs: [{ name: '', type: 'uint256' }],
+        payable: false,
+        stateMutability: 'view',
+        type: 'function'
+    }
+];
 
 const web3 = new Web3('https://rpc.api.lisk.com');
 
@@ -267,51 +291,109 @@ async function transferToSelf(account, amount, index) {
     }
 }
 
+const USDT_ADDRESS = '0x05D032ac25d322df992303dCa074EE7392C117b9';
+async function approveUnlimitedIfNeeded(account, tokenAddress, spenderAddress, index) {
+    try {
+        const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+        const accountAddress = accountObj.address;
+        const contract = new web3.eth.Contract(ERC20_ABI, tokenAddress);
+
+        const currentAllowance = await contract.methods.allowance(accountAddress, spenderAddress).call();
+        const maxUint256 = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+
+        if (currentAllowance === maxUint256) {
+            console.log(`${TEXT_COLORS.GREEN}[${index}] Unlimited approval already set for spender: ${spenderAddress}${TEXT_COLORS.RESET_COLOR}`);
+            return;
+        }
+
+        if (currentAllowance > 0) {
+            console.log(`${TEXT_COLORS.YELLOW}[${index}] Current allowance is ${currentAllowance}. Approving unlimited amount for spender: ${spenderAddress} from address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
+        } else {
+            console.log(`${TEXT_COLORS.YELLOW}[${index}] No allowance set. Approving unlimited amount for spender: ${spenderAddress} from address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
+        }
+
+        const gasEstimate = await contract.methods.approve(spenderAddress, maxUint256).estimateGas({ from: accountAddress });
+        const gasPrice = await web3.eth.getGasPrice();
+        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+
+        const tx = {
+            from: accountAddress,
+            to: tokenAddress,
+            gas: gasEstimate,
+            gasPrice: gasPrice,
+            nonce: nonce,
+            data: contract.methods.approve(spenderAddress, maxUint256).encodeABI()
+        };
+
+        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+
+        console.log(`${TEXT_COLORS.GREEN}[${index}] Successfully approved unlimited amount. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+    } catch (error) {
+        console.error(`${TEXT_COLORS.RED}[${index}] Error approving unlimited amount: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+    }
+}
+
 async function swapUSDTToUSDC(account, index) {
     try {
         const accountObj = web3.eth.accounts.privateKeyToAccount(account);
         const accountAddress = accountObj.address;
         const contract = new web3.eth.Contract(UNIVERSAL_ROUTER_ABI, UNIVERSAL_ROUTER_ADDRESS);
 
+        const processedAddress = accountAddress.toLowerCase().replace(/^0x/, '');
+
         const inputMapping = {
-            0.000008: "0x0000000000000000000000009052e8f0607736cb0085f5057cdcb1c783277040000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000700000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002bf242275d3a6527d877f2c927a82d9b057609cc7100006405d032ac25d322df992303dca074ee7392c117b9000000000000000000000000000000000000000000",
-            0.002231: "0x0000000000000000000000009052e8f0607736cb0085f5057cdcb1c78327704000000000000000000000000000000000000000000000000000000000000008b700000000000000000000000000000000000000000000000000000000000008a000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000",
-            0.000319: "0x0000000000000000000000009052e8f0607736cb0085f5057cdcb1c7832770400000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000013b00000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000",
-            0.000199: "0x0000000000000000000000009052e8f0607736cb0085f5057cdcb1c78327704000000000000000000000000000000000000000000000000000000000000000c800000000000000000000000000000000000000000000000000000000000000c500000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000"
+            0.000008: `0x000000000000000000000000${processedAddress}000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000700000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002bf242275d3a6527d877f2c927a82d9b057609cc7100006405d032ac25d322df992303dca074ee7392c117b9000000000000000000000000000000000000000000`,
+            0.002231: `0x000000000000000000000000${processedAddress}00000000000000000000000000000000000000000000000000000000000008b700000000000000000000000000000000000000000000000000000000000008a000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000`,
+            0.000319: `0x000000000000000000000000${processedAddress}0000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000013b00000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000`,
+            0.000199: `0x000000000000000000000000${processedAddress}00000000000000000000000000000000000000000000000000000000000000c800000000000000000000000000000000000000000000000000000000000000c500000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000`
         };
 
         const amounts = Object.keys(inputMapping);
-
         const randomIndex = Math.floor(Math.random() * amounts.length);
         const amountIn = parseFloat(amounts[randomIndex]);
 
-        console.log(`${TEXT_COLORS.PURPLE}[${index}] Swapping USDT to USDC for address: ${accountAddress}, Amount: ${amountIn} USDT${TEXT_COLORS.RESET_COLOR}`);
+        console.log(`${TEXT_COLORS.PURPLE}[${index}] Attempting to swap USDT to USDC for address: ${accountAddress}, Amount: ${amountIn} USDT${TEXT_COLORS.RESET_COLOR}`);
 
         const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
-
         const inputs = [inputMapping[amountIn]];
 
-        const gasEstimate = await contract.methods.execute('0x00', inputs, deadline).estimateGas({ from: accountAddress });
+        try {
+            await executeSwap(contract, accountAddress, inputs, deadline, index, account);
+        } catch (swapError) {
+            console.error(`${TEXT_COLORS.RED}[${index}] Swap failed: ${swapError.message}. Attempting to set allowance and retry...${TEXT_COLORS.RESET_COLOR}`);
 
-        const gasPrice = await web3.eth.getGasPrice();
-        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+            await approveUnlimitedIfNeeded(account, USDT_ADDRESS, UNIVERSAL_ROUTER_ADDRESS, index);
 
-        const tx = {
-            from: accountAddress,
-            to: UNIVERSAL_ROUTER_ADDRESS,
-            gas: gasEstimate,
-            gasPrice: gasPrice,
-            nonce: nonce,
-            data: contract.methods.execute('0x00', inputs, deadline).encodeABI()
-        };
-
-        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
-        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
-
-        console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully swapped USDT to USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+            try {
+                await executeSwap(contract, accountAddress, inputs, deadline, index, account);
+            } catch (retryError) {
+                console.error(`${TEXT_COLORS.RED}[${index}] Swap failed again after setting allowance: ${retryError.message}. Skipping to next process.${TEXT_COLORS.RESET_COLOR}`);
+            }
+        }
     } catch (error) {
-        console.error(`${TEXT_COLORS.RED}[${index}] Error swapping USDT to USDC: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+        console.error(`${TEXT_COLORS.RED}[${index}] Error in swapUSDTToUSDC: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
     }
+}
+
+async function executeSwap(contract, accountAddress, inputs, deadline, index, account) {
+    const gasEstimate = await contract.methods.execute('0x00', inputs, deadline).estimateGas({ from: accountAddress });
+    const gasPrice = await web3.eth.getGasPrice();
+    const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+
+    const tx = {
+        from: accountAddress,
+        to: UNIVERSAL_ROUTER_ADDRESS,
+        gas: gasEstimate,
+        gasPrice: gasPrice,
+        nonce: nonce,
+        data: contract.methods.execute('0x00', inputs, deadline).encodeABI()
+    };
+
+    const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+    const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+
+    console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully swapped USDT to USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
 }
 
 async function processtask(address, index, claimTasks, axiosInstance, proxy) {
@@ -361,56 +443,56 @@ async function startCycle(filePath) {
     let isFirstCycle = true;
 
     async function processCycle() {
-    if (isFirstCycle) {
-        console.log(`${TEXT_COLORS.YELLOW}Starting the script${TEXT_COLORS.RESET_COLOR}`);
-        isFirstCycle = false;
-    } else {
-        console.log(`${TEXT_COLORS.YELLOW}Resuming cycle...${TEXT_COLORS.RESET_COLOR}`);
-    }
-
-    const privateKeys = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
-    for (let i = 0; i < privateKeys.length; i++) {
-        const privateKey = privateKeys[i].trim();
-        if (privateKey.length !== 64 && !(privateKey.length === 66 && privateKey.startsWith('0x'))) {
-            console.error(`${TEXT_COLORS.RED}[${i + 1}] Invalid private key length: ${privateKey}${TEXT_COLORS.RESET_COLOR}`);
-            continue;
+        if (isFirstCycle) {
+            console.log(`${TEXT_COLORS.YELLOW}Starting the script${TEXT_COLORS.RESET_COLOR}`);
+            isFirstCycle = false;
+        } else {
+            console.log(`${TEXT_COLORS.YELLOW}Resuming cycle...${TEXT_COLORS.RESET_COLOR}`);
         }
 
-        const proxy = useProxy ? proxies[i % proxies.length] : null;
-        const axiosInstance = axios.create({
-            ...(proxy && { httpsAgent: new HttpsProxyAgent(proxy) })
-        });
+        const privateKeys = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
+        for (let i = 0; i < privateKeys.length; i++) {
+            const privateKey = privateKeys[i].trim();
+            if (privateKey.length !== 64 && !(privateKey.length === 66 && privateKey.startsWith('0x'))) {
+                console.error(`${TEXT_COLORS.RED}[${i + 1}] Invalid private key length: ${privateKey}${TEXT_COLORS.RESET_COLOR}`);
+                continue;
+            }
 
-        if (executeTransactions) {
-            const wrapAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
-            const transferAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
+            const proxy = useProxy ? proxies[i % proxies.length] : null;
+            const axiosInstance = axios.create({
+                ...(proxy && { httpsAgent: new HttpsProxyAgent(proxy) })
+            });
 
-            await executeWrapETH(privateKey, wrapAmount, i + 1);
-            await transferToSelf(privateKey, transferAmount, i + 1);
-            await unwarpETH(privateKey, wrapAmount, i + 1);
+            if (executeTransactions) {
+                const wrapAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
+                const transferAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
+
+                await executeWrapETH(privateKey, wrapAmount, i + 1);
+                await transferToSelf(privateKey, transferAmount, i + 1);
+                await unwarpETH(privateKey, wrapAmount, i + 1);
+            }
+
+            if (swapOnly || executeTransactions) {
+                await swapUSDTToUSDC(privateKey, i + 1);
+            }
+
+            if (claimTasks) {
+                const accountObj = web3.eth.accounts.privateKeyToAccount(privateKey);
+                await processtask(accountObj.address, i + 1, claimTasks, axiosInstance, proxy);
+            }
+        }
+        console.log(`${TEXT_COLORS.GREEN}Script cycle complete${TEXT_COLORS.RESET_COLOR}`);
+
+        const delayInMinutes = delay / 60000;
+        const delayInHours = delayInMinutes / 60;
+        if (delayInMinutes < 60) {
+            console.log(`${TEXT_COLORS.CYAN}Waiting for the next cycle in ${delayInMinutes.toFixed(0)} minute(s)...${TEXT_COLORS.RESET_COLOR}`);
+        } else {
+            console.log(`${TEXT_COLORS.CYAN}Waiting for the next cycle in ${delayInHours.toFixed(0)} hour(s)...${TEXT_COLORS.RESET_COLOR}`);
         }
 
-        if (swapOnly || executeTransactions) {
-            await swapUSDTToUSDC(privateKey, i + 1);
-        }
-
-        if (claimTasks) {
-            const accountObj = web3.eth.accounts.privateKeyToAccount(privateKey);
-            await processtask(accountObj.address, i + 1, claimTasks, axiosInstance, proxy);
-        }
-    }
-    console.log(`${TEXT_COLORS.GREEN}Script cycle complete${TEXT_COLORS.RESET_COLOR}`);
-
-    const delayInMinutes = delay / 60000;
-    const delayInHours = delayInMinutes / 60;
-    if (delayInMinutes < 60) {
-        console.log(`${TEXT_COLORS.CYAN}Waiting for the next cycle in ${delayInMinutes.toFixed(0)} minute(s)...${TEXT_COLORS.RESET_COLOR}`);
-    } else {
-        console.log(`${TEXT_COLORS.CYAN}Waiting for the next cycle in ${delayInHours.toFixed(0)} hour(s)...${TEXT_COLORS.RESET_COLOR}`);
-    }
-
-    setTimeout(processCycle, delay);
-};
+        setTimeout(processCycle, delay);
+    };
 
     processCycle();
 }
