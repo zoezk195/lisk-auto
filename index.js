@@ -68,6 +68,17 @@ const ERC20_ABI = [
         payable: false,
         stateMutability: 'view',
         type: 'function'
+    },
+    {
+        constant: true,
+        inputs: [
+            { name: 'account', type: 'address' }
+        ],
+        name: 'balanceOf',
+        outputs: [{ name: '', type: 'uint256' }],
+        payable: false,
+        stateMutability: 'view',
+        type: 'function'
     }
 ];
 
@@ -334,12 +345,26 @@ async function approveUnlimitedIfNeeded(account, tokenAddress, spenderAddress, i
     }
 }
 
+async function getUSDTBalance(accountAddress) {
+    const contract = new web3.eth.Contract(ERC20_ABI, USDT_ADDRESS);
+    const balance = await contract.methods.balanceOf(accountAddress).call();
+
+    return web3.utils.fromWei(balance, 'mwei');
+}
+
 async function swapUSDTToUSDC(account, index) {
     try {
         const accountObj = web3.eth.accounts.privateKeyToAccount(account);
         const accountAddress = accountObj.address;
-        const contract = new web3.eth.Contract(UNIVERSAL_ROUTER_ABI, UNIVERSAL_ROUTER_ADDRESS);
 
+        const usdtBalance = await getUSDTBalance(accountAddress);
+        console.log(`${TEXT_COLORS.CYAN}[${index}] Retrieved USDT balance: ${usdtBalance} USDT${TEXT_COLORS.RESET_COLOR}`);
+        if (parseFloat(usdtBalance) < 0.05) {
+            console.log(`${TEXT_COLORS.RED}[${index}] USDT balance is less than 0.05. Swap will not be processed.${TEXT_COLORS.RESET_COLOR}`);
+            return;
+        }
+
+        const contract = new web3.eth.Contract(UNIVERSAL_ROUTER_ABI, UNIVERSAL_ROUTER_ADDRESS);
         const processedAddress = accountAddress.toLowerCase().replace(/^0x/, '');
 
         const inputMapping = {
