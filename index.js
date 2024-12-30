@@ -462,7 +462,6 @@ async function processBorrowAndRepay(account, index) {
     const borrowAmount = web3.utils.toWei(usdtAmounts.borrowAmount, 'mwei');
     const borrowSuccess = await borrowTokens(account, borrowAmount, index);
     if (borrowSuccess) {
-        // Wait for 5 seconds after the borrow transaction is confirmed
         await new Promise(resolve => setTimeout(resolve, 5000));
         const repayAmount = web3.utils.toWei(usdtAmounts.repayAmount, 'mwei');
         await repayBorrow(account, repayAmount, index, false);
@@ -475,7 +474,6 @@ async function borrowTokens(account, borrowAmount, index) {
         const accountAddress = accountObj.address;
         const contract = new web3.eth.Contract(BORROW_CONTRACT_ABI, BORROW_CONTRACT_ADDRESS);
 
-        // Convert borrowAmount back to a human-readable format for logging
         const displayAmount = web3.utils.fromWei(borrowAmount, 'mwei');
 
         console.log(`${TEXT_COLORS.CYAN}[${index}] Attempting to borrow ${displayAmount} USDT for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
