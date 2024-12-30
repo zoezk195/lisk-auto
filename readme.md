@@ -9,7 +9,10 @@ This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain a
 ## Prerequisites
 - [Node.js](https://nodejs.org/) (version 12 or higher)
 - Lisk ETH, [Bridge here](https://www.relay.link/bridge/lisk?fromChainId=1)
-- USDT, [Swap here](https://oku.trade/?inputChain=lisk&inToken=0x0000000000000000000000000000000000000000&outToken=0x05D032ac25d322df992303dCa074EE7392C117b9&outTokenAmount=%220.0002593012318621867%22&inTokenAmount=%220.0002593012318621867%22)
+- USDT and USDC, [Swap here](https://oku.trade/?inputChain=lisk&inToken=0x0000000000000000000000000000000000000000&outToken=0x05D032ac25d322df992303dCa074EE7392C117b9&outTokenAmount=%220.0002593012318621867%22&inTokenAmount=%220.0002593012318621867%22)
+
+## Important notes
+- If you want to use auto borrow/repay, please Supply USDC and enable Collateral first [in here](https://app.ionic.money/market?chain=1135&pool=0)
 
 ## Installation
 
@@ -42,12 +45,16 @@ This script automated Send, wrap, unwrap ETH and claim task in Lisk blockchain a
 4. Edit `config.js` for change the delay, ETH range and percentage of unwrap ETH.
    ```
    module.exports = {
-    ethAmountRange: {
-        min: 0.00000001,
-        max: 0.0000001
-    }, // range of ETH amount that will be used and randomize
-    delay: 21600000, // 6 hour in milliseconds
-    unwarpPercentage: 0.95 // 95% of the wrapped amounts
+       ethAmountRange: {
+           min: 0.00000001, // minimum ETH amount
+           max: 0.0000001 // maximum ETH amount
+       },
+       delay: 21600000, // // 6 hour in milliseconds
+       unwarpPercentage: 0.95 // 95% of the wrapped amounts
+       usdtAmounts: {
+           borrowAmount: '0.166837', // Custom borrow amount in USDT
+           repayAmount: '0.166837'   // Custom repay amount in USDT
+       }
    };
    ```
 5. Run the script:
