@@ -458,7 +458,8 @@ async function executeSwap(contract, accountAddress, inputs, deadline, index, ac
     console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully swapped USDT to USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
 }
 
-async function borrowTokens(account, borrowAmount, index) {
+async function borrowTokens(account, borrowAmount, index, retryCount = 0) {
+    const maxRetries = 2;
     try {
         const accountObj = web3.eth.accounts.privateKeyToAccount(account);
         const accountAddress = accountObj.address;
@@ -490,8 +491,7 @@ async function borrowTokens(account, borrowAmount, index) {
         const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
 
         if (receipt.status) {
-            // Introduce a delay to allow the balance to update
-            await new Promise(resolve => setTimeout(resolve, 5000)); // 5-second delay
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
             const finalBalanceWei = await usdtContract.methods.balanceOf(accountAddress).call();
             const finalBalance = web3.utils.fromWei(finalBalanceWei, 'mwei');
@@ -510,8 +510,16 @@ async function borrowTokens(account, borrowAmount, index) {
             return false;
         }
     } catch (error) {
-        console.error(`${TEXT_COLORS.RED}[${index}] Error borrowing: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
-        return false;
+        const errorMessage = error.message.includes('reverted') ? 'Transaction has been reverted' : error.message;
+        console.error(`${TEXT_COLORS.RED}[${index}] Error borrowing: ${errorMessage}${TEXT_COLORS.RESET_COLOR}`);
+
+        if (retryCount < maxRetries) {
+            console.log(`${TEXT_COLORS.YELLOW}[${index}] Retrying borrow... Attempt ${retryCount + 2}${TEXT_COLORS.RESET_COLOR}`);
+            return await borrowTokens(account, borrowAmount, index, retryCount + 1);
+        } else {
+            console.error(`${TEXT_COLORS.RED}[${index}] Borrow failed after ${maxRetries + 1} attempts. Skipping further attempts.${TEXT_COLORS.RESET_COLOR}`);
+            return false;
+        }
     }
 }
 
