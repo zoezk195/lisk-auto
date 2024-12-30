@@ -458,16 +458,6 @@ async function executeSwap(contract, accountAddress, inputs, deadline, index, ac
     console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully swapped USDT to USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
 }
 
-async function processBorrowAndRepay(account, index) {
-    const borrowAmount = web3.utils.toWei(usdtAmounts.borrowAmount, 'mwei');
-    const borrowSuccess = await borrowTokens(account, borrowAmount, index);
-    if (borrowSuccess) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        const repayAmount = web3.utils.toWei(usdtAmounts.repayAmount, 'mwei');
-        await repayBorrow(account, repayAmount, index, false);
-    }
-}
-
 async function borrowTokens(account, borrowAmount, index) {
     try {
         const accountObj = web3.eth.accounts.privateKeyToAccount(account);
@@ -477,6 +467,8 @@ async function borrowTokens(account, borrowAmount, index) {
         const displayAmount = web3.utils.fromWei(borrowAmount, 'mwei');
 
         console.log(`${TEXT_COLORS.CYAN}[${index}] Attempting to borrow ${displayAmount} USDT for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
+
+        const initialBalance = await getUSDTBalance(accountAddress);
 
         const gasEstimate = await contract.methods.borrow(borrowAmount).estimateGas({ from: accountAddress });
         const gasPrice = await web3.eth.getGasPrice();
@@ -494,15 +486,35 @@ async function borrowTokens(account, borrowAmount, index) {
         const signedTx = await web3.eth.accounts.signTransaction(tx, account);
         const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
 
-        console.log(`${TEXT_COLORS.CYAN}[${index}] Successfully borrowed. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
-        return receipt.status;
+        const finalBalance = await getUSDTBalance(accountAddress);
+        const balanceIncreased = parseFloat(finalBalance) > parseFloat(initialBalance);
+
+        if (balanceIncreased) {
+            console.log(`${TEXT_COLORS.CYAN}[${index}] Successfully borrowed. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+            return true;
+        } else {
+            console.error(`${TEXT_COLORS.RED}[${index}] Borrow transaction was mined, but balance did not increase. Check collateral requirements.${TEXT_COLORS.RESET_COLOR}`);
+            return false;
+        }
     } catch (error) {
         console.error(`${TEXT_COLORS.RED}[${index}] Error borrowing: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
         return false;
     }
 }
 
-async function repayBorrow(account, repayAmount, index, approvalDone) {
+async function processBorrowAndRepay(account, index) {
+    const borrowAmount = web3.utils.toWei(usdtAmounts.borrowAmount, 'mwei');
+    const borrowSuccess = await borrowTokens(account, borrowAmount, index);
+    if (borrowSuccess) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        const repayAmount = web3.utils.toWei(usdtAmounts.repayAmount, 'mwei');
+        await repayBorrow(account, repayAmount, index, false, 0);
+    } else {
+        console.log(`${TEXT_COLORS.YELLOW}[${index}] Borrow failed. Skipping repay.${TEXT_COLORS.RESET_COLOR}`);
+    }
+}
+
+async function repayBorrow(account, repayAmount, index, approvalDone, retryCount) {
     try {
         const accountObj = web3.eth.accounts.privateKeyToAccount(account);
         const accountAddress = accountObj.address;
@@ -530,17 +542,18 @@ async function repayBorrow(account, repayAmount, index, approvalDone) {
 
         console.log(`${TEXT_COLORS.CYAN}[${index}] Successfully repaid. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
     } catch (error) {
-        if (error.message.includes('Transaction has been reverted by the EVM')) {
-            console.error(`${TEXT_COLORS.RED}[${index}] Error repaying: Transaction has been reverted${TEXT_COLORS.RESET_COLOR}`);
-        } else {
-            console.error(`${TEXT_COLORS.RED}[${index}] Error repaying: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
-        }
+        console.error(`${TEXT_COLORS.RED}[${index}] Error repaying: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
         if (!approvalDone) {
             console.log(`${TEXT_COLORS.YELLOW}[${index}] Attempting to approve before retrying repay...${TEXT_COLORS.RESET_COLOR}`);
             await approveUnlimitedIfNeeded(account, USDT_ADDRESS, BORROW_CONTRACT_ADDRESS, index);
             approvalDone = true;
         }
-        await repayBorrow(account, repayAmount, index, approvalDone);
+        if (retryCount < 2) {
+            console.log(`${TEXT_COLORS.YELLOW}[${index}] Retrying repay... Attempt ${retryCount + 2}${TEXT_COLORS.RESET_COLOR}`);
+            await repayBorrow(account, repayAmount, index, approvalDone, retryCount + 1);
+        } else {
+            console.error(`${TEXT_COLORS.RED}[${index}] Repay failed after 3 attempts. Skipping further attempts.${TEXT_COLORS.RESET_COLOR}`);
+        }
     }
 }
 
@@ -588,7 +601,9 @@ async function startCycle(filePath) {
         wrapOnly: false,
         unwrapOnly: false,
         swapUSDT: false,
-        borrowAndRepay: false
+        borrowAndRepay: false,
+        borrowOnly: false,
+        repayOnly: false
     };
 
     if (executeTransactions) {
@@ -604,17 +619,19 @@ async function startCycle(filePath) {
                 wrapOnly: false,
                 unwrapOnly: false,
                 swapUSDT: true,
-                borrowAndRepay: true
+                borrowAndRepay: true,
+                borrowOnly: false,
+                repayOnly: false
             };
         } else if (transactionOption === '2') {
             let validTxChoice = false;
             while (!validTxChoice) {
                 const txChoice = await askQuestion(
-                    `${TEXT_COLORS.GREEN}What TX do you want to process?:${TEXT_COLORS.RESET_COLOR}\n1. Send to self\n2. Wrap and Unwrap ETH\n3. Wrap ETH\n4. Unwrap ETH\n5. Swap USDT\n6. Borrow and Repay\n${TEXT_COLORS.CYAN}Enter your choices (e.g., 1/2/3 or 1,3,5 if you want to choose multiple options): ${TEXT_COLORS.RESET_COLOR}`
+                    `${TEXT_COLORS.GREEN}What TX do you want to process?:${TEXT_COLORS.RESET_COLOR}\n1. Send to self\n2. Wrap and Unwrap ETH\n3. Wrap ETH\n4. Unwrap ETH\n5. Swap USDT\n6. Borrow and Repay\n7. Borrow only\n8. Repay only\n${TEXT_COLORS.CYAN}Enter your choices (e.g., 1/2/3 or 1,3,5 if you want to choose multiple options): ${TEXT_COLORS.RESET_COLOR}`
                 );
                 const choices = txChoice.split(',').map(choice => choice.trim());
 
-                const validChoices = ['1', '2', '3', '4', '5', '6'];
+                const validChoices = ['1', '2', '3', '4', '5', '6', '7', '8'];
                 validTxChoice = choices.every(choice => validChoices.includes(choice));
 
                 if (!validTxChoice) {
@@ -626,6 +643,8 @@ async function startCycle(filePath) {
                     txOptions.unwrapOnly = choices.includes('4');
                     txOptions.swapUSDT = choices.includes('5');
                     txOptions.borrowAndRepay = choices.includes('6');
+                    txOptions.borrowOnly = choices.includes('7');
+                    txOptions.repayOnly = choices.includes('8');
                 }
             }
         }
@@ -699,6 +718,16 @@ async function startCycle(filePath) {
 
             if (txOptions.borrowAndRepay) {
                 await processBorrowAndRepay(privateKey, i + 1);
+            }
+
+            if (txOptions.borrowOnly) {
+                const borrowAmount = web3.utils.toWei(usdtAmounts.borrowAmount, 'mwei');
+                await borrowTokens(privateKey, borrowAmount, i + 1);
+            }
+
+            if (txOptions.repayOnly) {
+                const repayAmount = web3.utils.toWei(usdtAmounts.repayAmount, 'mwei');
+                await repayBorrow(privateKey, repayAmount, i + 1, false, 0);
             }
 
             if (claimTasks) {
