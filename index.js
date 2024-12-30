@@ -462,15 +462,18 @@ async function borrowTokens(account, borrowAmount, index) {
     try {
         const accountObj = web3.eth.accounts.privateKeyToAccount(account);
         const accountAddress = accountObj.address;
-        const contract = new web3.eth.Contract(BORROW_CONTRACT_ABI, BORROW_CONTRACT_ADDRESS);
+        const borrowContract = new web3.eth.Contract(BORROW_CONTRACT_ABI, BORROW_CONTRACT_ADDRESS);
+        const usdtContract = new web3.eth.Contract(ERC20_ABI, USDT_ADDRESS);
 
         const displayAmount = web3.utils.fromWei(borrowAmount, 'mwei');
 
         console.log(`${TEXT_COLORS.CYAN}[${index}] Attempting to borrow ${displayAmount} USDT for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
 
-        const initialBalance = await getUSDTBalance(accountAddress);
+        const initialBalanceWei = await usdtContract.methods.balanceOf(accountAddress).call();
+        const initialBalance = web3.utils.fromWei(initialBalanceWei, 'mwei');
+        console.log(`${TEXT_COLORS.YELLOW}[${index}] Initial USDT balance: ${initialBalance}${TEXT_COLORS.RESET_COLOR}`);
 
-        const gasEstimate = await contract.methods.borrow(borrowAmount).estimateGas({ from: accountAddress });
+        const gasEstimate = await borrowContract.methods.borrow(borrowAmount).estimateGas({ from: accountAddress });
         const gasPrice = await web3.eth.getGasPrice();
         const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
 
@@ -480,20 +483,30 @@ async function borrowTokens(account, borrowAmount, index) {
             gas: gasEstimate,
             gasPrice: gasPrice,
             nonce: nonce,
-            data: contract.methods.borrow(borrowAmount).encodeABI()
+            data: borrowContract.methods.borrow(borrowAmount).encodeABI()
         };
 
         const signedTx = await web3.eth.accounts.signTransaction(tx, account);
         const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
 
-        const finalBalance = await getUSDTBalance(accountAddress);
-        const balanceIncreased = parseFloat(finalBalance) > parseFloat(initialBalance);
+        if (receipt.status) {
+            // Introduce a delay to allow the balance to update
+            await new Promise(resolve => setTimeout(resolve, 5000)); // 5-second delay
 
-        if (balanceIncreased) {
-            console.log(`${TEXT_COLORS.CYAN}[${index}] Successfully borrowed. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
-            return true;
+            const finalBalanceWei = await usdtContract.methods.balanceOf(accountAddress).call();
+            const finalBalance = web3.utils.fromWei(finalBalanceWei, 'mwei');
+            console.log(`${TEXT_COLORS.YELLOW}[${index}] Final USDT balance: ${finalBalance}${TEXT_COLORS.RESET_COLOR}`);
+            const balanceIncreased = parseFloat(finalBalance) > parseFloat(initialBalance);
+
+            if (balanceIncreased) {
+                console.log(`${TEXT_COLORS.CYAN}[${index}] Successfully borrowed. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+                return true;
+            } else {
+                console.error(`${TEXT_COLORS.RED}[${index}] Borrow transaction was mined, but balance did not increase. Check collateral requirements.${TEXT_COLORS.RESET_COLOR}`);
+                return false;
+            }
         } else {
-            console.error(`${TEXT_COLORS.RED}[${index}] Borrow transaction was mined, but balance did not increase. Check collateral requirements.${TEXT_COLORS.RESET_COLOR}`);
+            console.error(`${TEXT_COLORS.RED}[${index}] Borrow transaction failed. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
             return false;
         }
     } catch (error) {
@@ -542,7 +555,9 @@ async function repayBorrow(account, repayAmount, index, approvalDone, retryCount
 
         console.log(`${TEXT_COLORS.CYAN}[${index}] Successfully repaid. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
     } catch (error) {
-        console.error(`${TEXT_COLORS.RED}[${index}] Error repaying: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+        const errorMessage = error.message.includes('reverted') ? 'Transaction has been reverted' : error.message;
+        console.error(`${TEXT_COLORS.RED}[${index}] Error repaying: ${errorMessage}${TEXT_COLORS.RESET_COLOR}`);
+
         if (!approvalDone) {
             console.log(`${TEXT_COLORS.YELLOW}[${index}] Attempting to approve before retrying repay...${TEXT_COLORS.RESET_COLOR}`);
             await approveUnlimitedIfNeeded(account, USDT_ADDRESS, BORROW_CONTRACT_ADDRESS, index);
