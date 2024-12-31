@@ -128,6 +128,7 @@ async function askQuestion(query, validAnswers = null) {
         ask();
     });
 }
+
 function getRandomEthAmount(min, max) {
     return (Math.random() * (max - min) + min).toFixed(9);
 }
@@ -244,94 +245,121 @@ const claimpayload = (address, taskId) => ({
     }
 });
 
-async function executeWrapETH(account, amount, index) {
-    try {
-        const accountObj = web3.eth.accounts.privateKeyToAccount(account);
-        const accountAddress = accountObj.address;
-        const contract = new web3.eth.Contract(WETH_ABI, WETH_ADDRESS);
-        console.log(`${TEXT_COLORS.PURPLE}[${index}] Wrapping ETH for address: ${accountAddress}, Amount: ${amount} ETH${TEXT_COLORS.RESET_COLOR}`);
+async function executeWrapETH(account, amount, index, maxRetries) {
+    let attempts = 0;
+    while (attempts < maxRetries || maxRetries === 0) {
+        try {
+            const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+            const accountAddress = accountObj.address;
+            const contract = new web3.eth.Contract(WETH_ABI, WETH_ADDRESS);
+            console.log(`${TEXT_COLORS.PURPLE}[${index}] Wrapping ETH for address: ${accountAddress}, Amount: ${amount} ETH${TEXT_COLORS.RESET_COLOR}`);
 
-        const valueInWei = web3.utils.toWei(amount.toString(), 'ether');
-        const gasEstimate = await contract.methods.deposit().estimateGas({ from: accountAddress, value: valueInWei });
-        const gasPrice = await web3.eth.getGasPrice();
-        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+            const valueInWei = web3.utils.toWei(amount.toString(), 'ether');
+            const gasEstimate = await contract.methods.deposit().estimateGas({ from: accountAddress, value: valueInWei });
+            const gasPrice = await web3.eth.getGasPrice();
+            const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
 
-        const tx = {
-            from: accountAddress,
-            to: WETH_ADDRESS,
-            value: valueInWei,
-            gas: gasEstimate,
-            gasPrice: gasPrice,
-            nonce: nonce,
-            data: contract.methods.deposit().encodeABI()
-        };
+            const tx = {
+                from: accountAddress,
+                to: WETH_ADDRESS,
+                value: valueInWei,
+                gas: gasEstimate,
+                gasPrice: gasPrice,
+                nonce: nonce,
+                data: contract.methods.deposit().encodeABI()
+            };
 
-        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
-        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+            const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+            const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
 
-        console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully wrapped ETH. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
-    } catch (error) {
-        console.error(`${TEXT_COLORS.RED}[${index}] Error wrapping ETH: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+            console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully wrapped ETH. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+            break;
+        } catch (error) {
+            attempts++;
+            console.error(`${TEXT_COLORS.RED}[${index}] Error wrapping ETH: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+            if (attempts >= maxRetries && maxRetries !== 0) {
+                console.error(`${TEXT_COLORS.RED}[${index}] Max retries reached for wrapping ETH. Skipping to next process.${TEXT_COLORS.RESET_COLOR}`);
+                break;
+            }
+        }
     }
 }
 
-async function unwarpETH(account, amount, index) {
-    try {
-        const accountObj = web3.eth.accounts.privateKeyToAccount(account);
-        const accountAddress = accountObj.address;
-        const contract = new web3.eth.Contract(WETH_ABI, WETH_ADDRESS);
-        const unwarpAmount = (amount * unwarpPercentage).toFixed(9);
-        console.log(`${TEXT_COLORS.GREEN}[${index}] Unwrapping ${unwarpPercentage * 100}% of WETH for address: ${accountAddress}, Amount: ${unwarpAmount} ETH${TEXT_COLORS.RESET_COLOR}`);
+async function unwarpETH(account, amount, index, maxRetries) {
+    let attempts = 0;
+    while (attempts < maxRetries || maxRetries === 0) {
+        try {
+            const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+            const accountAddress = accountObj.address;
+            const contract = new web3.eth.Contract(WETH_ABI, WETH_ADDRESS);
+            const unwarpAmount = (amount * unwarpPercentage).toFixed(9);
+            console.log(`${TEXT_COLORS.GREEN}[${index}] Unwrapping ${unwarpPercentage * 100}% of WETH for address: ${accountAddress}, Amount: ${unwarpAmount} ETH${TEXT_COLORS.RESET_COLOR}`);
 
-        const valueInWei = web3.utils.toWei(unwarpAmount.toString(), 'ether');
-        const gasEstimate = await contract.methods.withdraw(valueInWei).estimateGas({ from: accountAddress });
-        const gasPrice = await web3.eth.getGasPrice();
-        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+            const valueInWei = web3.utils.toWei(unwarpAmount.toString(), 'ether');
+            const gasEstimate = await contract.methods.withdraw(valueInWei).estimateGas({ from: accountAddress });
+            const gasPrice = await web3.eth.getGasPrice();
+            const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
 
-        const tx = {
-            from: accountAddress,
-            to: WETH_ADDRESS,
-            gas: gasEstimate,
-            gasPrice: gasPrice,
-            nonce: nonce,
-            data: contract.methods.withdraw(valueInWei).encodeABI()
-        };
+            const tx = {
+                from: accountAddress,
+                to: WETH_ADDRESS,
+                gas: gasEstimate,
+                gasPrice: gasPrice,
+                nonce: nonce,
+                data: contract.methods.withdraw(valueInWei).encodeABI()
+            };
 
-        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
-        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+            const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+            const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
 
-        console.log(`${TEXT_COLORS.GREEN}[${index}] Successfully unwrapped WETH. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
-    } catch (error) {
-        console.error(`${TEXT_COLORS.RED}[${index}] Error unwrapping WETH: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+            console.log(`${TEXT_COLORS.GREEN}[${index}] Successfully unwrapped WETH. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+            break;
+        } catch (error) {
+            attempts++;
+            console.error(`${TEXT_COLORS.RED}[${index}] Error unwrapping WETH: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+            if (attempts >= maxRetries && maxRetries !== 0) {
+                console.error(`${TEXT_COLORS.RED}[${index}] Max retries reached for unwrapping WETH. Skipping to next process.${TEXT_COLORS.RESET_COLOR}`);
+                break;
+            }
+        }
     }
 }
 
-async function transferToSelf(account, amount, index) {
-    const accountObj = web3.eth.accounts.privateKeyToAccount(account);
-    const accountAddress = accountObj.address;
-    try {
-        console.log(`${TEXT_COLORS.CYAN}[${index}] Transferring ${amount} ETH to self: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
+async function transferToSelf(account, amount, index, maxRetries) {
+    let attempts = 0;
+    while (attempts < maxRetries || maxRetries === 0) {
+        try {
+            const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+            const accountAddress = accountObj.address;
+            console.log(`${TEXT_COLORS.CYAN}[${index}] Transferring ${amount} ETH to self: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
 
-        const valueInWei = web3.utils.toWei(amount.toString(), 'ether');
-        const gasEstimate = await web3.eth.estimateGas({ from: accountAddress, to: accountAddress, value: valueInWei });
-        const gasPrice = await web3.eth.getGasPrice();
-        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+            const valueInWei = web3.utils.toWei(amount.toString(), 'ether');
+            const gasEstimate = await web3.eth.estimateGas({ from: accountAddress, to: accountAddress, value: valueInWei });
+            const gasPrice = await web3.eth.getGasPrice();
+            const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
 
-        const tx = {
-            from: accountAddress,
-            to: accountAddress,
-            value: valueInWei,
-            gas: gasEstimate,
-            gasPrice: gasPrice,
-            nonce: nonce
-        };
+            const tx = {
+                from: accountAddress,
+                to: accountAddress,
+                value: valueInWei,
+                gas: gasEstimate,
+                gasPrice: gasPrice,
+                nonce: nonce
+            };
 
-        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
-        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+            const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+            const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
 
-        console.log(`${TEXT_COLORS.CYAN}[${index}] Transfer to self successful. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
-    } catch (error) {
-        console.error(`${TEXT_COLORS.RED}[${index}] Error during self-transfer: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+            console.log(`${TEXT_COLORS.CYAN}[${index}] Transfer to self successful. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+            break;
+        } catch (error) {
+            attempts++;
+            console.error(`${TEXT_COLORS.RED}[${index}] Error during self-transfer: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+            if (attempts >= maxRetries && maxRetries !== 0) {
+                console.error(`${TEXT_COLORS.RED}[${index}] Max retries reached for self-transfer. Skipping to next process.${TEXT_COLORS.RESET_COLOR}`);
+                break;
+            }
+        }
     }
 }
 
@@ -385,12 +413,9 @@ async function getUSDTBalance(accountAddress) {
     return web3.utils.fromWei(balance, 'mwei');
 }
 
-async function swapUSDTToUSDC(account, index) {
-    const maxRetries = 3;
+async function swapUSDTToUSDC(account, index, maxRetries) {
     let attempts = 0;
-    let swapSuccessful = false;
-
-    while (attempts < maxRetries && !swapSuccessful) {
+    while (attempts < maxRetries || maxRetries === 0) {
         try {
             const accountObj = web3.eth.accounts.privateKeyToAccount(account);
             const accountAddress = accountObj.address;
@@ -422,18 +447,19 @@ async function swapUSDTToUSDC(account, index) {
             const inputs = [inputMapping[amountIn]];
 
             await executeSwap(contract, accountAddress, inputs, deadline, index, account);
-            swapSuccessful = true;
+            break;
         } catch (swapError) {
             attempts++;
             console.error(`${TEXT_COLORS.RED}[${index}] Swap attempt ${attempts} failed: ${swapError.message}.${TEXT_COLORS.RESET_COLOR}`);
 
-            if (attempts < maxRetries) {
-                console.log(`${TEXT_COLORS.YELLOW}[${index}] Retrying swap...${TEXT_COLORS.RESET_COLOR}`);
-                await approveUnlimitedIfNeeded(account, USDT_ADDRESS, UNIVERSAL_ROUTER_ADDRESS, index);
-                await new Promise(resolve => setTimeout(resolve, 5000));
-            } else {
-                console.error(`${TEXT_COLORS.RED}[${index}] Swap failed after ${maxRetries} attempts. Skipping to next process.${TEXT_COLORS.RESET_COLOR}`);
+            if (attempts >= maxRetries && maxRetries !== 0) {
+                console.error(`${TEXT_COLORS.RED}[${index}] Max retries reached for swap. Skipping to next process.${TEXT_COLORS.RESET_COLOR}`);
+                break;
             }
+
+            console.log(`${TEXT_COLORS.YELLOW}[${index}] Retrying swap...${TEXT_COLORS.RESET_COLOR}`);
+            await approveUnlimitedIfNeeded(account, USDT_ADDRESS, UNIVERSAL_ROUTER_ADDRESS, index);
+            await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
 }
@@ -458,124 +484,119 @@ async function executeSwap(contract, accountAddress, inputs, deadline, index, ac
     console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully swapped USDT to USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
 }
 
-async function borrowTokens(account, borrowAmount, index, retryCount = 0) {
-    const maxRetries = 2;
-    try {
-        const accountObj = web3.eth.accounts.privateKeyToAccount(account);
-        const accountAddress = accountObj.address;
-        const borrowContract = new web3.eth.Contract(BORROW_CONTRACT_ABI, BORROW_CONTRACT_ADDRESS);
-        const usdtContract = new web3.eth.Contract(ERC20_ABI, USDT_ADDRESS);
+async function borrowTokens(account, borrowAmount, index, maxRetries) {
+    let attempts = 0;
+    while (attempts < maxRetries || maxRetries === 0) {
+        try {
+            const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+            const accountAddress = accountObj.address;
+            const borrowContract = new web3.eth.Contract(BORROW_CONTRACT_ABI, BORROW_CONTRACT_ADDRESS);
+            const usdtContract = new web3.eth.Contract(ERC20_ABI, USDT_ADDRESS);
 
-        const displayAmount = web3.utils.fromWei(borrowAmount, 'mwei');
+            const displayAmount = web3.utils.fromWei(borrowAmount, 'mwei');
 
-        console.log(`${TEXT_COLORS.CYAN}[${index}] Attempting to borrow ${displayAmount} USDT for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
+            console.log(`${TEXT_COLORS.CYAN}[${index}] Attempting to borrow ${displayAmount} USDT for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
 
-        const initialBalanceWei = await usdtContract.methods.balanceOf(accountAddress).call();
-        const initialBalance = web3.utils.fromWei(initialBalanceWei, 'mwei');
-        console.log(`${TEXT_COLORS.YELLOW}[${index}] Initial USDT balance: ${initialBalance}${TEXT_COLORS.RESET_COLOR}`);
+            const initialBalanceWei = await usdtContract.methods.balanceOf(accountAddress).call();
+            const initialBalance = web3.utils.fromWei(initialBalanceWei, 'mwei');
+            console.log(`${TEXT_COLORS.YELLOW}[${index}] Initial USDT balance: ${initialBalance}${TEXT_COLORS.RESET_COLOR}`);
 
-        const gasEstimate = await borrowContract.methods.borrow(borrowAmount).estimateGas({ from: accountAddress });
-        const gasPrice = await web3.eth.getGasPrice();
-        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+            const gasEstimate = await borrowContract.methods.borrow(borrowAmount).estimateGas({ from: accountAddress });
+            const gasPrice = await web3.eth.getGasPrice();
+            const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
 
-        const tx = {
-            from: accountAddress,
-            to: BORROW_CONTRACT_ADDRESS,
-            gas: gasEstimate,
-            gasPrice: gasPrice,
-            nonce: nonce,
-            data: borrowContract.methods.borrow(borrowAmount).encodeABI()
-        };
+            const tx = {
+                from: accountAddress,
+                to: BORROW_CONTRACT_ADDRESS,
+                gas: gasEstimate,
+                gasPrice: gasPrice,
+                nonce: nonce,
+                data: borrowContract.methods.borrow(borrowAmount).encodeABI()
+            };
 
-        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
-        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+            const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+            const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
 
-        if (receipt.status) {
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            if (receipt.status) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
 
-            const finalBalanceWei = await usdtContract.methods.balanceOf(accountAddress).call();
-            const finalBalance = web3.utils.fromWei(finalBalanceWei, 'mwei');
-            console.log(`${TEXT_COLORS.YELLOW}[${index}] Final USDT balance: ${finalBalance}${TEXT_COLORS.RESET_COLOR}`);
-            const balanceIncreased = parseFloat(finalBalance) > parseFloat(initialBalance);
+                const finalBalanceWei = await usdtContract.methods.balanceOf(accountAddress).call();
+                const finalBalance = web3.utils.fromWei(finalBalanceWei, 'mwei');
+                console.log(`${TEXT_COLORS.YELLOW}[${index}] Final USDT balance: ${finalBalance}${TEXT_COLORS.RESET_COLOR}`);
+                const balanceIncreased = parseFloat(finalBalance) > parseFloat(initialBalance);
 
-            if (balanceIncreased) {
-                console.log(`${TEXT_COLORS.CYAN}[${index}] Successfully borrowed. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
-                return true;
+                if (balanceIncreased) {
+                    console.log(`${TEXT_COLORS.CYAN}[${index}] Successfully borrowed. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+                    break;
+                } else {
+                    console.error(`${TEXT_COLORS.RED}[${index}] Borrow transaction was mined, but balance did not increase. Check collateral requirements.${TEXT_COLORS.RESET_COLOR}`);
+                }
             } else {
-                console.error(`${TEXT_COLORS.RED}[${index}] Borrow transaction was mined, but balance did not increase. Check collateral requirements.${TEXT_COLORS.RESET_COLOR}`);
-                return false;
+                console.error(`${TEXT_COLORS.RED}[${index}] Borrow transaction failed. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
             }
-        } else {
-            console.error(`${TEXT_COLORS.RED}[${index}] Borrow transaction failed. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
-            return false;
+        } catch (error) {
+            console.error(`${TEXT_COLORS.RED}[${index}] Error borrowing: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
         }
-    } catch (error) {
-        const errorMessage = error.message.includes('reverted') ? 'Transaction has been reverted' : error.message;
-        console.error(`${TEXT_COLORS.RED}[${index}] Error borrowing: ${errorMessage}${TEXT_COLORS.RESET_COLOR}`);
 
-        if (retryCount < maxRetries) {
-            console.log(`${TEXT_COLORS.YELLOW}[${index}] Retrying borrow... Attempt ${retryCount + 2}${TEXT_COLORS.RESET_COLOR}`);
-            return await borrowTokens(account, borrowAmount, index, retryCount + 1);
-        } else {
-            console.error(`${TEXT_COLORS.RED}[${index}] Borrow failed after ${maxRetries + 1} attempts. Skipping further attempts.${TEXT_COLORS.RESET_COLOR}`);
-            return false;
+        attempts++;
+        if (attempts >= maxRetries && maxRetries !== 0) {
+            console.error(`${TEXT_COLORS.RED}[${index}] Max retries reached for borrowing. Skipping to next process.${TEXT_COLORS.RESET_COLOR}`);
+            break;
         }
     }
 }
 
-async function processBorrowAndRepay(account, index) {
+async function processBorrowAndRepay(account, index, maxRetries) {
     const borrowAmount = web3.utils.toWei(usdtAmounts.borrowAmount, 'mwei');
-    const borrowSuccess = await borrowTokens(account, borrowAmount, index);
-    if (borrowSuccess) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        const repayAmount = web3.utils.toWei(usdtAmounts.repayAmount, 'mwei');
-        await repayBorrow(account, repayAmount, index, false, 0);
-    } else {
-        console.log(`${TEXT_COLORS.YELLOW}[${index}] Borrow failed. Skipping repay.${TEXT_COLORS.RESET_COLOR}`);
-    }
+    await borrowTokens(account, borrowAmount, index, maxRetries);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    const repayAmount = web3.utils.toWei(usdtAmounts.repayAmount, 'mwei');
+    await repayBorrow(account, repayAmount, index, false, 0, maxRetries);
 }
 
-async function repayBorrow(account, repayAmount, index, approvalDone, retryCount) {
-    try {
-        const accountObj = web3.eth.accounts.privateKeyToAccount(account);
-        const accountAddress = accountObj.address;
-        const contract = new web3.eth.Contract(BORROW_CONTRACT_ABI, BORROW_CONTRACT_ADDRESS);
+async function repayBorrow(account, repayAmount, index, approvalDone, retryCount, maxRetries) {
+    while (retryCount < maxRetries || maxRetries === 0) {
+        try {
+            const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+            const accountAddress = accountObj.address;
+            const contract = new web3.eth.Contract(BORROW_CONTRACT_ABI, BORROW_CONTRACT_ADDRESS);
 
-        const displayAmount = web3.utils.fromWei(repayAmount, 'mwei');
+            const displayAmount = web3.utils.fromWei(repayAmount, 'mwei');
 
-        console.log(`${TEXT_COLORS.CYAN}[${index}] Attempting to repay ${displayAmount} USDT for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
+            console.log(`${TEXT_COLORS.CYAN}[${index}] Attempting to repay ${displayAmount} USDT for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
 
-        const gasEstimate = await contract.methods.repayBorrow(repayAmount).estimateGas({ from: accountAddress });
-        const gasPrice = await web3.eth.getGasPrice();
-        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+            const gasEstimate = await contract.methods.repayBorrow(repayAmount).estimateGas({ from: accountAddress });
+            const gasPrice = await web3.eth.getGasPrice();
+            const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
 
-        const tx = {
-            from: accountAddress,
-            to: BORROW_CONTRACT_ADDRESS,
-            gas: gasEstimate,
-            gasPrice: gasPrice,
-            nonce: nonce,
-            data: contract.methods.repayBorrow(repayAmount).encodeABI()
-        };
+            const tx = {
+                from: accountAddress,
+                to: BORROW_CONTRACT_ADDRESS,
+                gas: gasEstimate,
+                gasPrice: gasPrice,
+                nonce: nonce,
+                data: contract.methods.repayBorrow(repayAmount).encodeABI()
+            };
 
-        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
-        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+            const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+            const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
 
-        console.log(`${TEXT_COLORS.CYAN}[${index}] Successfully repaid. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
-    } catch (error) {
-        const errorMessage = error.message.includes('reverted') ? 'Transaction has been reverted' : error.message;
-        console.error(`${TEXT_COLORS.RED}[${index}] Error repaying: ${errorMessage}${TEXT_COLORS.RESET_COLOR}`);
+            console.log(`${TEXT_COLORS.CYAN}[${index}] Successfully repaid. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+            break;
+        } catch (error) {
+            console.error(`${TEXT_COLORS.RED}[${index}] Error repaying: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
 
-        if (!approvalDone) {
-            console.log(`${TEXT_COLORS.YELLOW}[${index}] Attempting to approve before retrying repay...${TEXT_COLORS.RESET_COLOR}`);
-            await approveUnlimitedIfNeeded(account, USDT_ADDRESS, BORROW_CONTRACT_ADDRESS, index);
-            approvalDone = true;
+            if (!approvalDone) {
+                console.log(`${TEXT_COLORS.YELLOW}[${index}] Attempting to approve before retrying repay...${TEXT_COLORS.RESET_COLOR}`);
+                await approveUnlimitedIfNeeded(account, USDT_ADDRESS, BORROW_CONTRACT_ADDRESS, index);
+                approvalDone = true;
+            }
         }
-        if (retryCount < 2) {
-            console.log(`${TEXT_COLORS.YELLOW}[${index}] Retrying repay... Attempt ${retryCount + 2}${TEXT_COLORS.RESET_COLOR}`);
-            await repayBorrow(account, repayAmount, index, approvalDone, retryCount + 1);
-        } else {
-            console.error(`${TEXT_COLORS.RED}[${index}] Repay failed after 3 attempts. Skipping further attempts.${TEXT_COLORS.RESET_COLOR}`);
+
+        retryCount++;
+        if (retryCount >= maxRetries && maxRetries !== 0) {
+            console.error(`${TEXT_COLORS.RED}[${index}] Max retries reached for repaying. Skipping further attempts.${TEXT_COLORS.RESET_COLOR}`);
+            break;
         }
     }
 }
@@ -600,6 +621,36 @@ async function processtask(address, index, claimTasks, axiosInstance, proxy) {
     } else {
         console.log(`${TEXT_COLORS.YELLOW}[${index}] Skipped processing tasks for address: ${address}${TEXT_COLORS.RESET_COLOR}`);
     }
+}
+
+async function getCurrentUTCTime() {
+    try {
+        const response = await axios.get('http://worldtimeapi.org/api/timezone/Etc/UTC');
+        const utcDateTime = new Date(response.data.utc_datetime);
+        return utcDateTime;
+    } catch (error) {
+        console.error('Error fetching UTC time:', error);
+        return new Date();
+    }
+}
+
+async function getNextRunTimeInLocal() {
+    const now = await getCurrentUTCTime();
+    const nextRun = new Date(now);
+    nextRun.setUTCHours(0, 30, 0, 0);
+    if (now >= nextRun) {
+        nextRun.setUTCDate(now.getUTCDate() + 1);
+    }
+
+    // Convert UTC time to local time
+    const localTime = new Intl.DateTimeFormat('default', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZoneName: 'short'
+    }).format(nextRun);
+
+    return localTime;
 }
 
 async function startCycle(filePath) {
@@ -630,35 +681,32 @@ async function startCycle(filePath) {
     };
 
     if (executeTransactions) {
-        const transactionOption = await askQuestion(
-            `${TEXT_COLORS.GREEN}Transaction option:${TEXT_COLORS.RESET_COLOR}\n1. Process all TX (Send self, Wrap, Unwrap, SwapUSDT, Borrow and Repay)\n2. Process some TX (Choose manually)\n${TEXT_COLORS.CYAN}Enter your choice (1/2): ${TEXT_COLORS.RESET_COLOR}`,
-            ['1', '2']
-        );
+        let validTxChoice = false;
+        while (!validTxChoice) {
+            const txChoice = await askQuestion(
+                `${TEXT_COLORS.GREEN}What TX do you want to process?:${TEXT_COLORS.RESET_COLOR}\n1. Send to self\n2. Wrap and Unwrap ETH\n3. Wrap ETH\n4. Unwrap ETH\n5. Swap USDT\n6. Borrow and Repay\n7. Borrow only\n8. Repay only\n${TEXT_COLORS.CYAN}Enter your choices (e.g., 1/2/3 or 1,3,5 if you want to choose multiple options, or 'all' for all options): ${TEXT_COLORS.RESET_COLOR}`
+            );
+            const trimmedChoice = txChoice.trim().toLowerCase();
 
-        if (transactionOption === '1') {
-            txOptions = {
-                sendToSelf: true,
-                wrapUnwrap: true,
-                wrapOnly: false,
-                unwrapOnly: false,
-                swapUSDT: true,
-                borrowAndRepay: true,
-                borrowOnly: false,
-                repayOnly: false
-            };
-        } else if (transactionOption === '2') {
-            let validTxChoice = false;
-            while (!validTxChoice) {
-                const txChoice = await askQuestion(
-                    `${TEXT_COLORS.GREEN}What TX do you want to process?:${TEXT_COLORS.RESET_COLOR}\n1. Send to self\n2. Wrap and Unwrap ETH\n3. Wrap ETH\n4. Unwrap ETH\n5. Swap USDT\n6. Borrow and Repay\n7. Borrow only\n8. Repay only\n${TEXT_COLORS.CYAN}Enter your choices (e.g., 1/2/3 or 1,3,5 if you want to choose multiple options): ${TEXT_COLORS.RESET_COLOR}`
-                );
-                const choices = txChoice.split(',').map(choice => choice.trim());
-
+            if (trimmedChoice === 'all') {
+                txOptions = {
+                    sendToSelf: true,
+                    wrapUnwrap: true,
+                    wrapOnly: true,
+                    unwrapOnly: true,
+                    swapUSDT: true,
+                    borrowAndRepay: true,
+                    borrowOnly: true,
+                    repayOnly: true
+                };
+                validTxChoice = true;
+            } else {
+                const choices = trimmedChoice.split(',').map(choice => choice.trim());
                 const validChoices = ['1', '2', '3', '4', '5', '6', '7', '8'];
                 validTxChoice = choices.every(choice => validChoices.includes(choice));
 
                 if (!validTxChoice) {
-                    console.log(`${TEXT_COLORS.RED}Invalid choice(s). Please enter valid options (e.g., 1,3,5).${TEXT_COLORS.RESET_COLOR}`);
+                    console.log(`${TEXT_COLORS.RED}Invalid choice(s). Please enter valid options (e.g., 1,3,5) or 'all'.${TEXT_COLORS.RESET_COLOR}`);
                 } else {
                     txOptions.sendToSelf = choices.includes('1');
                     txOptions.wrapUnwrap = choices.includes('2');
@@ -695,6 +743,16 @@ async function startCycle(filePath) {
         return;
     }
 
+    const delayOption = await askQuestion(
+        `${TEXT_COLORS.GREEN}Do you want to use the delay from config.js or auto process every day at 00:30 UTC?${TEXT_COLORS.RESET_COLOR}\n1. Use delay from config.js\n2. Auto process at 00:30 UTC\n${TEXT_COLORS.CYAN}Enter your choice (1/2): ${TEXT_COLORS.RESET_COLOR}`,
+        ['1', '2']
+    );
+
+    const retryCountAnswer = await askQuestion(
+        `${TEXT_COLORS.GREEN}Enter the number of retries for TX errors (0 for infinite retries): ${TEXT_COLORS.RESET_COLOR}${TEXT_COLORS.CYAN}`
+    );
+    const maxRetries = parseInt(retryCountAnswer, 10);
+
     let isFirstCycle = true;
 
     async function processCycle() {
@@ -719,38 +777,38 @@ async function startCycle(filePath) {
 
             if (txOptions.wrapUnwrap || txOptions.wrapOnly) {
                 const wrapAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
-                await executeWrapETH(privateKey, wrapAmount, i + 1);
+                await executeWrapETH(privateKey, wrapAmount, i + 1, maxRetries);
                 if (txOptions.wrapUnwrap) {
-                    await unwarpETH(privateKey, wrapAmount, i + 1);
+                    await unwarpETH(privateKey, wrapAmount, i + 1, maxRetries);
                 }
             }
 
             if (txOptions.unwrapOnly) {
                 const unwrapAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
-                await unwarpETH(privateKey, unwrapAmount, i + 1);
+                await unwarpETH(privateKey, unwrapAmount, i + 1, maxRetries);
             }
 
             if (txOptions.sendToSelf) {
                 const transferAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
-                await transferToSelf(privateKey, transferAmount, i + 1);
+                await transferToSelf(privateKey, transferAmount, i + 1, maxRetries);
             }
 
             if (txOptions.swapUSDT) {
-                await swapUSDTToUSDC(privateKey, i + 1);
+                await swapUSDTToUSDC(privateKey, i + 1, maxRetries);
             }
 
             if (txOptions.borrowAndRepay) {
-                await processBorrowAndRepay(privateKey, i + 1);
+                await processBorrowAndRepay(privateKey, i + 1, maxRetries);
             }
 
             if (txOptions.borrowOnly) {
                 const borrowAmount = web3.utils.toWei(usdtAmounts.borrowAmount, 'mwei');
-                await borrowTokens(privateKey, borrowAmount, i + 1);
+                await borrowTokens(privateKey, borrowAmount, i + 1, maxRetries);
             }
 
             if (txOptions.repayOnly) {
                 const repayAmount = web3.utils.toWei(usdtAmounts.repayAmount, 'mwei');
-                await repayBorrow(privateKey, repayAmount, i + 1, false, 0);
+                await repayBorrow(privateKey, repayAmount, i + 1, false, 0, maxRetries);
             }
 
             if (claimTasks) {
@@ -760,7 +818,20 @@ async function startCycle(filePath) {
         }
         console.log(`${TEXT_COLORS.GREEN}Script cycle complete${TEXT_COLORS.RESET_COLOR}`);
 
-        const delayInMinutes = delay / 60000;
+        let nextDelay;
+        if (delayOption === '1') {
+            nextDelay = delay;
+        } else {
+            const now = await getCurrentUTCTime();
+            const nextRun = new Date(now);
+            nextRun.setUTCHours(0, 30, 0, 0);
+            if (now >= nextRun) {
+                nextRun.setUTCDate(now.getUTCDate() + 1);
+            }
+            nextDelay = nextRun - now;
+        }
+
+        const delayInMinutes = nextDelay / 60000;
         const delayInHours = delayInMinutes / 60;
         if (delayInMinutes < 60) {
             console.log(`${TEXT_COLORS.CYAN}Waiting for the next cycle in ${delayInMinutes.toFixed(0)} minute(s)...${TEXT_COLORS.RESET_COLOR}`);
@@ -768,7 +839,10 @@ async function startCycle(filePath) {
             console.log(`${TEXT_COLORS.CYAN}Waiting for the next cycle in ${delayInHours.toFixed(0)} hour(s)...${TEXT_COLORS.RESET_COLOR}`);
         }
 
-        setTimeout(processCycle, delay);
+        const localNextRunTime = await getNextRunTimeInLocal();
+        console.log(`${TEXT_COLORS.CYAN}Next cycle will run at local time: ${localNextRunTime}${TEXT_COLORS.RESET_COLOR}`);
+
+        setTimeout(processCycle, nextDelay);
     };
 
     processCycle();
