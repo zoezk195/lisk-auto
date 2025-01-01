@@ -10,7 +10,7 @@ module.exports = {
         repayAmount: '0.16' // Amount of USDT to repay in the repay process
     },
     usdcAmounts: {
-        supplyAmount: '0.002', // One-time supply amount
-        supplyAmount71Times: '0.0001' // 71-time supply amount
+        supplyAmount: '0.5', // One-time supply amount USDC
+        supplyAmount71Times: '0.0001' // 71-time supply amount USDC
     }
 };
