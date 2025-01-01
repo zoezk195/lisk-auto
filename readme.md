@@ -43,7 +43,7 @@ This script automated Send, Swap, Borrow, Repay, wrap, unwrap, supply and claim 
    ```
    proxy is used only when you choose to use and only in claim task.
 4. Edit `config.js` for change the delay, ETH range and percentage of unwrap ETH.
-   ```
+   ```bash
    module.exports = {
        ethAmountRange: {
            min: 0.00000001, // Minimum amount of ETH to use in random transactions
@@ -56,8 +56,8 @@ This script automated Send, Swap, Borrow, Repay, wrap, unwrap, supply and claim 
            repayAmount: '0.16' // Amount of USDT to repay in the repay process
        },
        usdcAmounts: {
-           supplyAmount: '0.002', // One-time supply amount
-           supplyAmount71Times: '0.0001' // 71-time supply amount
+           supplyAmount: '0.5', // One-time supply amount USDC
+           supplyAmount71Times: '0.0001' // 71-time supply amount USDC
        }
    };
    ```
