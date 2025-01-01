@@ -1,10 +1,10 @@
 # lisk auto
 
 ## Description
-This script automated Send, Swap, Borrow, Repay, wrap, unwrap and claim task in Lisk blockchain and airdrop.
+This script automated Send, Swap, Borrow, Repay, wrap, unwrap, supply and claim task in Lisk blockchain and airdrop.
 
 ## Features
-- **Send, Swap, Borrow, Repay, wrap, unwrap and claim task of Lisk airdrop**
+- **Send, Swap, Borrow, Repay, wrap, unwrap, supply and claim task of Lisk airdrop**
 
 ## Prerequisites
 - [Node.js](https://nodejs.org/) (version 12 or higher)
@@ -12,7 +12,7 @@ This script automated Send, Swap, Borrow, Repay, wrap, unwrap and claim task in 
 - USDT and USDC, [Swap here](https://oku.trade/?inputChain=lisk&inToken=0x0000000000000000000000000000000000000000&outToken=0x05D032ac25d322df992303dCa074EE7392C117b9&outTokenAmount=%220.0002593012318621867%22&inTokenAmount=%220.0002593012318621867%22)
 
 ## Important notes
-- If you want to use auto borrow/repay, please Supply USDC and enable Collateral first [in here](https://app.ionic.money/market?chain=1135&pool=0)
+- Site used to supply/borrow [in here](https://app.ionic.money/market?chain=1135&pool=0)
 
 ## Installation
 
@@ -46,14 +46,18 @@ This script automated Send, Swap, Borrow, Repay, wrap, unwrap and claim task in 
    ```
    module.exports = {
        ethAmountRange: {
-           min: 0.00000001, // minimum ETH amount
-           max: 0.0000001 // maximum ETH amount
+           min: 0.00000001, // Minimum amount of ETH to use in random transactions
+           max: 0.0000001 // Maximum amount of ETH to use in random transactions
        },
-       delay: 21600000, // // 6 hour in milliseconds
-       unwarpPercentage: 0.95, // 95% of the wrapped amounts
+       delay: 21600000, // Delay in milliseconds (6 hours) between cycles if using the delay option
+       unwarpPercentage: 0.95, // Percentage of WETH to unwrap during the unwrapping process
        usdtAmounts: {
-           borrowAmount: '0.16', // Custom borrow amount in USDT (must be more than 0.16)
-           repayAmount: '0.16'   // Custom repay amount in USDT (must be more than 0.16)
+           borrowAmount: '0.16', // Amount of USDT to borrow in the borrow process
+           repayAmount: '0.16' // Amount of USDT to repay in the repay process
+       },
+       usdcAmounts: {
+           supplyAmount: '0.002', // One-time supply amount
+           supplyAmount71Times: '0.0001' // 71-time supply amount
        }
    };
    ```
