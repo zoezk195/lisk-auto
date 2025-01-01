@@ -3,6 +3,7 @@ const Web3 = require('web3');
 const axios = require('axios');
 const readline = require('readline');
 const { HttpsProxyAgent } = require('https-proxy-agent');
+const { SocksProxyAgent } = require('socks-proxy-agent');
 const { ethAmountRange, delay, unwarpPercentage, usdtAmounts, usdcAmounts } = require('./config');
 
 const WETH_ADDRESS = '0x4200000000000000000000000000000000000006';
@@ -794,8 +795,6 @@ async function checkUSDCAllowance(account, spenderAddress) {
     return web3.utils.toBN(allowance);
 }
 
-
-
 async function isCollateralEnabled(account, cTokenAddress) {
     const accountObj = web3.eth.accounts.privateKeyToAccount(account);
     const accountAddress = accountObj.address;
@@ -965,7 +964,7 @@ async function startCycle(filePath) {
     let proxies = [];
     if (useProxy) {
         proxies = fs.readFileSync('proxy.txt', 'utf-8').split('\n').filter(Boolean).map(proxy => {
-            if (!proxy.startsWith('http://') && !proxy.startsWith('https://')) {
+            if (!proxy.startsWith('http://') && !proxy.startsWith('https://') && !proxy.startsWith('socks5://')) {
                 return `http://${proxy}`;
             }
             return proxy;
@@ -1022,9 +1021,16 @@ async function startCycle(filePath) {
             }
 
             const proxy = useProxy ? proxies[i % proxies.length] : null;
-            const axiosInstance = axios.create({
-                ...(proxy && { httpsAgent: new HttpsProxyAgent(proxy) })
-            });
+            let axiosInstance;
+            if (proxy) {
+                const isSocksProxy = proxy.startsWith('socks5://');
+                const agent = isSocksProxy ? new SocksProxyAgent(proxy) : new HttpsProxyAgent(proxy);
+                axiosInstance = axios.create({
+                    httpsAgent: agent
+                });
+            } else {
+                axiosInstance = axios.create();
+            }
 
             if (txOptions.sendToSelf) {
                 const transferAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
