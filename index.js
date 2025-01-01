@@ -629,7 +629,7 @@ async function getCurrentUTCTime() {
         const utcDateTime = new Date(response.data.utc_datetime);
         return utcDateTime;
     } catch (error) {
-        console.error('Error fetching UTC time:', error);
+      //  console.error('Error fetching UTC time:', error);
         return new Date();
     }
 }
@@ -642,7 +642,6 @@ async function getNextRunTimeInLocal() {
         nextRun.setUTCDate(now.getUTCDate() + 1);
     }
 
-    // Convert UTC time to local time
     const localTime = new Intl.DateTimeFormat('default', {
         hour: '2-digit',
         minute: '2-digit',
