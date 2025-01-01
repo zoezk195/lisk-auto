@@ -3,7 +3,7 @@ const Web3 = require('web3');
 const axios = require('axios');
 const readline = require('readline');
 const { HttpsProxyAgent } = require('https-proxy-agent');
-const { ethAmountRange, delay, unwarpPercentage, usdtAmounts } = require('./config');
+const { ethAmountRange, delay, unwarpPercentage, usdtAmounts, usdcAmounts } = require('./config');
 
 const WETH_ADDRESS = '0x4200000000000000000000000000000000000006';
 const WETH_ABI = [
@@ -100,6 +100,43 @@ const ERC20_ABI = [
         outputs: [{ name: '', type: 'uint256' }],
         payable: false,
         stateMutability: 'view',
+        type: 'function'
+    }
+];
+
+const USDC_CONTRACT_ABI = [
+    {
+        constant: false,
+        inputs: [{ name: 'amount', type: 'uint256' }],
+        name: 'mint',
+        outputs: [],
+        payable: false,
+        stateMutability: 'nonpayable',
+        type: 'function'
+    }
+];
+
+const COLLATERAL_CONTRACT_ABI = [
+    {
+        constant: true,
+        inputs: [{ name: 'account', type: 'address' }],
+        name: 'getAccountLiquidity',
+        outputs: [
+            { name: 'error', type: 'uint256' },
+            { name: 'liquidity', type: 'uint256' },
+            { name: 'shortfall', type: 'uint256' }
+        ],
+        payable: false,
+        stateMutability: 'view',
+        type: 'function'
+    },
+    {
+        constant: false,
+        inputs: [{ name: 'cTokens', type: 'address[]' }],
+        name: 'enterMarkets',
+        outputs: [{ name: '', type: 'uint256[]' }],
+        payable: false,
+        stateMutability: 'nonpayable',
         type: 'function'
     }
 ];
@@ -413,40 +450,65 @@ async function getUSDTBalance(accountAddress) {
     return web3.utils.fromWei(balance, 'mwei');
 }
 
+async function checkAllowance(account, tokenAddress, spenderAddress, requiredAmount) {
+    const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+    const accountAddress = accountObj.address;
+    const contract = new web3.eth.Contract(ERC20_ABI, tokenAddress);
+
+    const allowance = await contract.methods.allowance(accountAddress, spenderAddress).call();
+    return web3.utils.toBN(allowance).gte(web3.utils.toBN(requiredAmount));
+}
+
 async function swapUSDTToUSDC(account, index, maxRetries) {
     let attempts = 0;
+    const requiredAllowance = web3.utils.toWei('1', 'mwei');
+
     while (attempts < maxRetries || maxRetries === 0) {
         try {
             const accountObj = web3.eth.accounts.privateKeyToAccount(account);
             const accountAddress = accountObj.address;
 
             const usdtBalance = await getUSDTBalance(accountAddress);
-            console.log(`${TEXT_COLORS.CYAN}[${index}] Retrieved USDT balance: ${usdtBalance} USDT${TEXT_COLORS.RESET_COLOR}`);
-            if (parseFloat(usdtBalance) < 0.05) {
-                console.log(`${TEXT_COLORS.RED}[${index}] USDT balance is less than 0.05. Swap will not be processed.${TEXT_COLORS.RESET_COLOR}`);
+            console.log(`${TEXT_COLORS.CYAN}[${index}] USDT balance: ${usdtBalance} USDT${TEXT_COLORS.RESET_COLOR}`);
+
+            if (parseFloat(usdtBalance) < 0.1) {
+                console.log(`${TEXT_COLORS.RED}[${index}] Insufficient USDT balance for swap. Required: 0.1 USDT${TEXT_COLORS.RESET_COLOR}`);
                 return;
             }
 
-            const contract = new web3.eth.Contract(UNIVERSAL_ROUTER_ABI, UNIVERSAL_ROUTER_ADDRESS);
-            const processedAddress = accountAddress.toLowerCase().replace(/^0x/, '');
+            const hasSufficientAllowance = await checkAllowance(account, USDT_ADDRESS, UNIVERSAL_ROUTER_ADDRESS, requiredAllowance);
+            if (!hasSufficientAllowance) {
+                console.log(`${TEXT_COLORS.YELLOW}[${index}] Insufficient allowance. Approving USDT...${TEXT_COLORS.RESET_COLOR}`);
+                await approveUnlimitedIfNeeded(account, USDT_ADDRESS, UNIVERSAL_ROUTER_ADDRESS, index);
+            }
 
-            const inputMapping = {
-                0.000008: `0x000000000000000000000000${processedAddress}000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000700000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002bf242275d3a6527d877f2c927a82d9b057609cc7100006405d032ac25d322df992303dca074ee7392c117b9000000000000000000000000000000000000000000`,
-                0.002231: `0x000000000000000000000000${processedAddress}00000000000000000000000000000000000000000000000000000000000008b700000000000000000000000000000000000000000000000000000000000008a000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000`,
-                0.000319: `0x000000000000000000000000${processedAddress}0000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000013b00000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000`,
-                0.000199: `0x000000000000000000000000${processedAddress}00000000000000000000000000000000000000000000000000000000000000c800000000000000000000000000000000000000000000000000000000000000c500000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000`
+            const contract = new web3.eth.Contract(UNIVERSAL_ROUTER_ABI, UNIVERSAL_ROUTER_ADDRESS);
+
+            console.log(`${TEXT_COLORS.PURPLE}[${index}] Attempting to swap USDT to USDC for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
+
+            const commands = '0x00';
+            const inputs = [
+                `0x000000000000000000000000${accountAddress.slice(2)}000000000000000000000000000000000000000000000000000000000000007b000000000000000000000000000000000000000000000000000000000000007700000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000`
+            ];
+            const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
+
+            const gasEstimate = await contract.methods.execute(commands, inputs, deadline).estimateGas({ from: accountAddress });
+            const gasPrice = await web3.eth.getGasPrice();
+            const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+
+            const tx = {
+                from: accountAddress,
+                to: UNIVERSAL_ROUTER_ADDRESS,
+                gas: gasEstimate,
+                gasPrice: gasPrice,
+                nonce: nonce,
+                data: contract.methods.execute(commands, inputs, deadline).encodeABI()
             };
 
-            const amounts = Object.keys(inputMapping);
-            const randomIndex = Math.floor(Math.random() * amounts.length);
-            const amountIn = parseFloat(amounts[randomIndex]);
+            const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+            const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
 
-            console.log(`${TEXT_COLORS.PURPLE}[${index}] Attempting to swap USDT to USDC for address: ${accountAddress}, Amount: ${amountIn} USDT${TEXT_COLORS.RESET_COLOR}`);
-
-            const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
-            const inputs = [inputMapping[amountIn]];
-
-            await executeSwap(contract, accountAddress, inputs, deadline, index, account);
+            console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully swapped USDT to USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
             break;
         } catch (swapError) {
             attempts++;
@@ -458,30 +520,9 @@ async function swapUSDTToUSDC(account, index, maxRetries) {
             }
 
             console.log(`${TEXT_COLORS.YELLOW}[${index}] Retrying swap...${TEXT_COLORS.RESET_COLOR}`);
-            await approveUnlimitedIfNeeded(account, USDT_ADDRESS, UNIVERSAL_ROUTER_ADDRESS, index);
             await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
-}
-
-async function executeSwap(contract, accountAddress, inputs, deadline, index, account) {
-    const gasEstimate = await contract.methods.execute('0x00', inputs, deadline).estimateGas({ from: accountAddress });
-    const gasPrice = await web3.eth.getGasPrice();
-    const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
-
-    const tx = {
-        from: accountAddress,
-        to: UNIVERSAL_ROUTER_ADDRESS,
-        gas: gasEstimate,
-        gasPrice: gasPrice,
-        nonce: nonce,
-        data: contract.methods.execute('0x00', inputs, deadline).encodeABI()
-    };
-
-    const signedTx = await web3.eth.accounts.signTransaction(tx, account);
-    const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
-
-    console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully swapped USDT to USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
 }
 
 async function borrowTokens(account, borrowAmount, index, maxRetries) {
@@ -535,7 +576,8 @@ async function borrowTokens(account, borrowAmount, index, maxRetries) {
                 console.error(`${TEXT_COLORS.RED}[${index}] Borrow transaction failed. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
             }
         } catch (error) {
-            console.error(`${TEXT_COLORS.RED}[${index}] Error borrowing: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+            const transactionHash = error.receipt ? error.receipt.transactionHash : 'unknown';
+            console.error(`${TEXT_COLORS.RED}[${index}] Error borrowing: Transaction reverted. Hash: ${transactionHash}${TEXT_COLORS.RESET_COLOR}`);
         }
 
         attempts++;
@@ -629,7 +671,6 @@ async function getCurrentUTCTime() {
         const utcDateTime = new Date(response.data.utc_datetime);
         return utcDateTime;
     } catch (error) {
-      //  console.error('Error fetching UTC time:', error);
         return new Date();
     }
 }
@@ -650,6 +691,201 @@ async function getNextRunTimeInLocal() {
     }).format(nextRun);
 
     return localTime;
+}
+
+async function approveUSDC(account, index) {
+    try {
+        const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+        const accountAddress = accountObj.address;
+        const contract = new web3.eth.Contract(ERC20_ABI, '0xF242275d3a6527d877f2c927a82D9b057609cc71');
+
+        console.log(`${TEXT_COLORS.CYAN}[${index}] Approving USDC for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
+
+        const gasEstimate = await contract.methods.approve('0x7682C12F6D1af845479649c77A9E7729F0180D78', '9999999999000000').estimateGas({ from: accountAddress });
+        const gasPrice = await web3.eth.getGasPrice();
+        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+
+        const tx = {
+            from: accountAddress,
+            to: '0xF242275d3a6527d877f2c927a82D9b057609cc71',
+            gas: gasEstimate,
+            gasPrice: gasPrice,
+            nonce: nonce,
+            data: contract.methods.approve('0x7682C12F6D1af845479649c77A9E7729F0180D78', '9999999999000000').encodeABI()
+        };
+
+        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+
+        console.log(`${TEXT_COLORS.GREEN}[${index}] Successfully approved USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+    } catch (error) {
+        console.error(`${TEXT_COLORS.RED}[${index}] Error approving USDC: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+    }
+}
+
+async function supplyUSDC(account, index, supplyAmountWei) {
+    try {
+        const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+        const accountAddress = accountObj.address;
+        const contract = new web3.eth.Contract(USDC_CONTRACT_ABI, '0x7682C12F6D1af845479649c77A9E7729F0180D78');
+
+        console.log(`${TEXT_COLORS.CYAN}[${index}] Supplying ${web3.utils.fromWei(supplyAmountWei, 'mwei')} USDC for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
+
+        const gasEstimate = await contract.methods.mint(supplyAmountWei).estimateGas({ from: accountAddress });
+        const gasPrice = await web3.eth.getGasPrice();
+        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+
+        const tx = {
+            from: accountAddress,
+            to: '0x7682C12F6D1af845479649c77A9E7729F0180D78',
+            gas: gasEstimate,
+            gasPrice: gasPrice,
+            nonce: nonce,
+            data: contract.methods.mint(supplyAmountWei).encodeABI()
+        };
+
+        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+
+        console.log(`${TEXT_COLORS.GREEN}[${index}] Successfully supplied USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+        return receipt;
+    } catch (error) {
+        console.error(`${TEXT_COLORS.RED}[${index}] Error supplying USDC${TEXT_COLORS.RESET_COLOR}`);
+        throw new Error('Error supplying USDC');
+    }
+}
+
+async function enableCollateral(account, index) {
+    try {
+        const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+        const accountAddress = accountObj.address;
+        const contract = new web3.eth.Contract(COLLATERAL_CONTRACT_ABI, '0xF448A36feFb223B8E46e36FF12091baBa97bdF60');
+
+        console.log(`${TEXT_COLORS.CYAN}[${index}] Enabling collateral for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
+
+        const gasEstimate = await contract.methods.enterMarkets(['0x7682C12F6D1af845479649c77A9E7729F0180D78']).estimateGas({ from: accountAddress });
+        const gasPrice = await web3.eth.getGasPrice();
+        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+
+        const tx = {
+            from: accountAddress,
+            to: '0xF448A36feFb223B8E46e36FF12091baBa97bdF60',
+            gas: gasEstimate,
+            gasPrice: gasPrice,
+            nonce: nonce,
+            data: contract.methods.enterMarkets(['0x7682C12F6D1af845479649c77A9E7729F0180D78']).encodeABI()
+        };
+
+        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+
+        console.log(`${TEXT_COLORS.GREEN}[${index}] Successfully enabled collateral. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+    } catch (error) {
+        console.error(`${TEXT_COLORS.RED}[${index}] Error enabling collateral: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+    }
+}
+
+async function checkUSDCAllowance(account, spenderAddress) {
+    const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+    const accountAddress = accountObj.address;
+    const contract = new web3.eth.Contract(ERC20_ABI, '0xF242275d3a6527d877f2c927a82D9b057609cc71');
+
+    const allowance = await contract.methods.allowance(accountAddress, spenderAddress).call();
+    return web3.utils.toBN(allowance);
+}
+
+
+
+async function isCollateralEnabled(account, cTokenAddress) {
+    const accountObj = web3.eth.accounts.privateKeyToAccount(account);
+    const accountAddress = accountObj.address;
+    const contract = new web3.eth.Contract(COLLATERAL_CONTRACT_ABI, '0xF448A36feFb223B8E46e36FF12091baBa97bdF60');
+
+    try {
+        const result = await contract.methods.getAccountLiquidity(accountAddress).call();
+        const liquidity = web3.utils.toBN(result.liquidity);
+        return liquidity.gt(web3.utils.toBN(0));
+    } catch (error) {
+        console.error(`Error checking collateral status: ${error.message}`);
+        return false;
+    }
+}
+
+async function processSupplyUSDC(account, index, maxRetries, supplyAmount) {
+    const spenderAddress = '0x7682C12F6D1af845479649c77A9E7729F0180D78';
+    const supplyAmountWei = web3.utils.toWei(supplyAmount, 'mwei');
+    let attempts = 0;
+
+    while (attempts < maxRetries || maxRetries === 0) {
+        try {
+            const allowance = await checkUSDCAllowance(account, spenderAddress);
+            if (allowance.lt(web3.utils.toBN(supplyAmountWei))) {
+                console.log(`${TEXT_COLORS.YELLOW}[${index}] Insufficient allowance. Approving USDC...${TEXT_COLORS.RESET_COLOR}`);
+                await approveUSDC(account, index);
+            }
+
+            await supplyUSDC(account, index, supplyAmountWei);
+
+            const cTokenAddress = '0x7682C12F6D1af845479649c77A9E7729F0180D78';
+            const collateralEnabled = await isCollateralEnabled(account, cTokenAddress);
+            if (!collateralEnabled) {
+                console.log(`${TEXT_COLORS.YELLOW}[${index}] Collateral not enabled. Enabling collateral...${TEXT_COLORS.RESET_COLOR}`);
+                await enableCollateral(account, index);
+            } else {
+                console.log(`${TEXT_COLORS.GREEN}[${index}] Collateral already enabled. Skipping enablement.${TEXT_COLORS.RESET_COLOR}`);
+            }
+            break;
+        } catch (error) {
+            console.error(`${TEXT_COLORS.RED}[${index}] Error in supply process: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+            attempts++;
+            if (attempts >= maxRetries && maxRetries !== 0) {
+                console.error(`${TEXT_COLORS.RED}[${index}] Max retries reached for supplying USDC. Skipping to next process.${TEXT_COLORS.RESET_COLOR}`);
+                break;
+            }
+        }
+    }
+}
+
+async function processSupplyUSDC71Times(account, index, supplyAmount) {
+    const spenderAddress = '0x7682C12F6D1af845479649c77A9E7729F0180D78';
+    const supplyAmountWei = web3.utils.toWei(supplyAmount, 'mwei');
+    let successCount = 0;
+    const delayBetweenSupplies = 5000;
+
+    try {
+        const allowance = await checkUSDCAllowance(account, spenderAddress);
+        if (allowance.lt(web3.utils.toBN(supplyAmountWei))) {
+            console.log(`${TEXT_COLORS.YELLOW}[${index}] Insufficient allowance. Approving USDC...${TEXT_COLORS.RESET_COLOR}`);
+            await approveUSDC(account, index);
+        }
+
+        while (successCount < 71) {
+            try {
+                const receipt = await supplyUSDC(account, index, supplyAmountWei);
+                if (receipt.status) {
+                    successCount++;
+                    console.log(`${TEXT_COLORS.GREEN}[${index}] Successfully supplied USDC ${successCount}/71 times. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+                } else {
+                    console.error(`${TEXT_COLORS.RED}[${index}] Transaction failed.${TEXT_COLORS.RESET_COLOR}`);
+                }
+            } catch (error) {
+                console.error(`${TEXT_COLORS.RED}[${index}] Error supplying USDC${TEXT_COLORS.RESET_COLOR}`);
+            }
+
+            await new Promise(resolve => setTimeout(resolve, delayBetweenSupplies));
+        }
+
+        const cTokenAddress = '0x7682C12F6D1af845479649c77A9E7729F0180D78';
+        const collateralEnabled = await isCollateralEnabled(account, cTokenAddress);
+        if (!collateralEnabled) {
+            console.log(`${TEXT_COLORS.YELLOW}[${index}] Collateral not enabled. Enabling collateral...${TEXT_COLORS.RESET_COLOR}`);
+            await enableCollateral(account, index);
+        } else {
+            console.log(`${TEXT_COLORS.GREEN}[${index}] Collateral already enabled. Skipping enablement.${TEXT_COLORS.RESET_COLOR}`);
+        }
+    } catch (error) {
+        console.error(`${TEXT_COLORS.RED}[${index}] Error in supply process: Error supplying USDC${TEXT_COLORS.RESET_COLOR}`);
+    }
 }
 
 async function startCycle(filePath) {
@@ -674,16 +910,18 @@ async function startCycle(filePath) {
         wrapOnly: false,
         unwrapOnly: false,
         swapUSDT: false,
+        supplyUSDC: false,
         borrowAndRepay: false,
         borrowOnly: false,
-        repayOnly: false
+        repayOnly: false,
+        supplyUSDC71Times: false
     };
 
     if (executeTransactions) {
         let validTxChoice = false;
         while (!validTxChoice) {
             const txChoice = await askQuestion(
-                `${TEXT_COLORS.GREEN}What TX do you want to process?:${TEXT_COLORS.RESET_COLOR}\n1. Send to self\n2. Wrap and Unwrap ETH\n3. Wrap ETH\n4. Unwrap ETH\n5. Swap USDT\n6. Borrow and Repay\n7. Borrow only\n8. Repay only\n${TEXT_COLORS.CYAN}Enter your choices (e.g., 1/2/3 or 1,3,5 if you want to choose multiple options, or 'all' for all options): ${TEXT_COLORS.RESET_COLOR}`
+                `${TEXT_COLORS.GREEN}What TX do you want to process?:${TEXT_COLORS.RESET_COLOR}\n1. Send to self\n2. Wrap and Unwrap ETH\n3. Wrap ETH\n4. Unwrap ETH\n5. Swap USDT\n6. Supply USDC\n7. Borrow and Repay\n8. Borrow only\n9. Repay only\n10. Supply USDC 71 times\n${TEXT_COLORS.CYAN}Enter your choices (e.g., 1/2/3 or 1,3,5 if you want to choose multiple options, or 'all' for all options): ${TEXT_COLORS.RESET_COLOR}`
             );
             const trimmedChoice = txChoice.trim().toLowerCase();
 
@@ -694,14 +932,16 @@ async function startCycle(filePath) {
                     wrapOnly: true,
                     unwrapOnly: true,
                     swapUSDT: true,
+                    supplyUSDC: true,
                     borrowAndRepay: true,
                     borrowOnly: true,
-                    repayOnly: true
+                    repayOnly: true,
+                    supplyUSDC71Times: true
                 };
                 validTxChoice = true;
             } else {
                 const choices = trimmedChoice.split(',').map(choice => choice.trim());
-                const validChoices = ['1', '2', '3', '4', '5', '6', '7', '8'];
+                const validChoices = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
                 validTxChoice = choices.every(choice => validChoices.includes(choice));
 
                 if (!validTxChoice) {
@@ -712,9 +952,11 @@ async function startCycle(filePath) {
                     txOptions.wrapOnly = choices.includes('3');
                     txOptions.unwrapOnly = choices.includes('4');
                     txOptions.swapUSDT = choices.includes('5');
-                    txOptions.borrowAndRepay = choices.includes('6');
-                    txOptions.borrowOnly = choices.includes('7');
-                    txOptions.repayOnly = choices.includes('8');
+                    txOptions.supplyUSDC = choices.includes('6');
+                    txOptions.borrowAndRepay = choices.includes('7');
+                    txOptions.borrowOnly = choices.includes('8');
+                    txOptions.repayOnly = choices.includes('9');
+                    txOptions.supplyUSDC71Times = choices.includes('10');
                 }
             }
         }
@@ -748,9 +990,19 @@ async function startCycle(filePath) {
     );
 
     const retryCountAnswer = await askQuestion(
-        `${TEXT_COLORS.GREEN}Enter the number of retries for TX errors (0 for infinite retries): ${TEXT_COLORS.RESET_COLOR}${TEXT_COLORS.CYAN}`
+        `${TEXT_COLORS.GREEN}Enter the number of retries for TX errors (0 for infinite retries, 'none' for no retries): ${TEXT_COLORS.RESET_COLOR}${TEXT_COLORS.CYAN}`
     );
-    const maxRetries = parseInt(retryCountAnswer, 10);
+
+    let maxRetries;
+    if (retryCountAnswer.toLowerCase() === 'none') {
+        maxRetries = 0;
+    } else {
+        maxRetries = parseInt(retryCountAnswer, 10);
+        if (isNaN(maxRetries)) {
+            console.error(`${TEXT_COLORS.RED}Invalid input. Defaulting to no retries.${TEXT_COLORS.RESET_COLOR}`);
+            maxRetries = 0;
+        }
+    }
 
     let isFirstCycle = true;
 
@@ -774,6 +1026,11 @@ async function startCycle(filePath) {
                 ...(proxy && { httpsAgent: new HttpsProxyAgent(proxy) })
             });
 
+            if (txOptions.sendToSelf) {
+                const transferAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
+                await transferToSelf(privateKey, transferAmount, i + 1, maxRetries);
+            }
+
             if (txOptions.wrapUnwrap || txOptions.wrapOnly) {
                 const wrapAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
                 await executeWrapETH(privateKey, wrapAmount, i + 1, maxRetries);
@@ -787,13 +1044,12 @@ async function startCycle(filePath) {
                 await unwarpETH(privateKey, unwrapAmount, i + 1, maxRetries);
             }
 
-            if (txOptions.sendToSelf) {
-                const transferAmount = getRandomEthAmount(ethAmountRange.min, ethAmountRange.max);
-                await transferToSelf(privateKey, transferAmount, i + 1, maxRetries);
-            }
-
             if (txOptions.swapUSDT) {
                 await swapUSDTToUSDC(privateKey, i + 1, maxRetries);
+            }
+
+            if (txOptions.supplyUSDC) {
+                await processSupplyUSDC(privateKey, i + 1, maxRetries, usdcAmounts.supplyAmount);
             }
 
             if (txOptions.borrowAndRepay) {
@@ -813,6 +1069,10 @@ async function startCycle(filePath) {
             if (claimTasks) {
                 const accountObj = web3.eth.accounts.privateKeyToAccount(privateKey);
                 await processtask(accountObj.address, i + 1, claimTasks, axiosInstance, proxy);
+            }
+
+            if (txOptions.supplyUSDC71Times) {
+                await processSupplyUSDC71Times(privateKey, i + 1, usdcAmounts.supplyAmount71Times);
             }
         }
         console.log(`${TEXT_COLORS.GREEN}Script cycle complete${TEXT_COLORS.RESET_COLOR}`);
