@@ -527,7 +527,7 @@ async function executeSwap(contract, accountAddress, inputs, deadline, index, ac
         console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully swapped USDT to USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
     } catch (error) {
         console.error(`${TEXT_COLORS.RED}[${index}] Error executing swap: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
-        throw error; // Re-throw the error to handle it in the calling function
+        throw error;
     }
 }
 
