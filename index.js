@@ -451,78 +451,83 @@ async function getUSDTBalance(accountAddress) {
     return web3.utils.fromWei(balance, 'mwei');
 }
 
-async function checkAllowance(account, tokenAddress, spenderAddress, requiredAmount) {
-    const accountObj = web3.eth.accounts.privateKeyToAccount(account);
-    const accountAddress = accountObj.address;
-    const contract = new web3.eth.Contract(ERC20_ABI, tokenAddress);
-
-    const allowance = await contract.methods.allowance(accountAddress, spenderAddress).call();
-    return web3.utils.toBN(allowance).gte(web3.utils.toBN(requiredAmount));
-}
-
-async function swapUSDTToUSDC(account, index, maxRetries) {
+async function swapUSDTToUSDC(account, index) {
+    const maxRetries = 3;
     let attempts = 0;
-    const requiredAllowance = web3.utils.toWei('1', 'mwei');
+    let swapSuccessful = false;
 
-    while (attempts < maxRetries || maxRetries === 0) {
+    while (attempts < maxRetries && !swapSuccessful) {
         try {
             const accountObj = web3.eth.accounts.privateKeyToAccount(account);
             const accountAddress = accountObj.address;
-
             const usdtBalance = await getUSDTBalance(accountAddress);
-            console.log(`${TEXT_COLORS.CYAN}[${index}] USDT balance: ${usdtBalance} USDT${TEXT_COLORS.RESET_COLOR}`);
 
-            if (parseFloat(usdtBalance) < 0.1) {
-                console.log(`${TEXT_COLORS.RED}[${index}] Insufficient USDT balance for swap. Required: 0.1 USDT${TEXT_COLORS.RESET_COLOR}`);
+            console.log(`${TEXT_COLORS.CYAN}[${index}] Retrieved USDT balance: ${usdtBalance} USDT${TEXT_COLORS.RESET_COLOR}`);
+
+            if (parseFloat(usdtBalance) < 0.05) {
+                console.log(`${TEXT_COLORS.RED}[${index}] USDT balance is less than 0.05. Swap will not be processed.${TEXT_COLORS.RESET_COLOR}`);
                 return;
             }
 
-            const hasSufficientAllowance = await checkAllowance(account, USDT_ADDRESS, UNIVERSAL_ROUTER_ADDRESS, requiredAllowance);
-            if (!hasSufficientAllowance) {
-                console.log(`${TEXT_COLORS.YELLOW}[${index}] Insufficient allowance. Approving USDT...${TEXT_COLORS.RESET_COLOR}`);
-                await approveUnlimitedIfNeeded(account, USDT_ADDRESS, UNIVERSAL_ROUTER_ADDRESS, index);
-            }
-
             const contract = new web3.eth.Contract(UNIVERSAL_ROUTER_ABI, UNIVERSAL_ROUTER_ADDRESS);
+            const processedAddress = accountAddress.toLowerCase().replace(/^0x/, '');
 
-            console.log(`${TEXT_COLORS.PURPLE}[${index}] Attempting to swap USDT to USDC for address: ${accountAddress}${TEXT_COLORS.RESET_COLOR}`);
-
-            const commands = '0x00';
-            const inputs = [
-                `0x000000000000000000000000${accountAddress.slice(2)}000000000000000000000000000000000000000000000000000000000000007b000000000000000000000000000000000000000000000000000000000000007700000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000`
-            ];
-            const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
-
-            const gasEstimate = await contract.methods.execute(commands, inputs, deadline).estimateGas({ from: accountAddress });
-            const gasPrice = await web3.eth.getGasPrice();
-            const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
-
-            const tx = {
-                from: accountAddress,
-                to: UNIVERSAL_ROUTER_ADDRESS,
-                gas: gasEstimate,
-                gasPrice: gasPrice,
-                nonce: nonce,
-                data: contract.methods.execute(commands, inputs, deadline).encodeABI()
+            const inputMapping = {
+                0.000008: `0x000000000000000000000000${processedAddress}000000000000000000000000000000000000000000000000000000000000000a000000000000000000000000000000000000000000000000000000000000000700000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002bf242275d3a6527d877f2c927a82d9b057609cc7100006405d032ac25d322df992303dca074ee7392c117b9000000000000000000000000000000000000000000`,
+                0.002231: `0x000000000000000000000000${processedAddress}00000000000000000000000000000000000000000000000000000000000008b700000000000000000000000000000000000000000000000000000000000008a000000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000`,
+                0.000319: `0x000000000000000000000000${processedAddress}0000000000000000000000000000000000000000000000000000000000000140000000000000000000000000000000000000000000000000000000000000013b00000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000`,
+                0.000199: `0x000000000000000000000000${processedAddress}00000000000000000000000000000000000000000000000000000000000000c800000000000000000000000000000000000000000000000000000000000000c500000000000000000000000000000000000000000000000000000000000000a00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002b05d032ac25d322df992303dca074ee7392c117b9000064f242275d3a6527d877f2c927a82d9b057609cc71000000000000000000000000000000000000000000`
             };
 
-            const signedTx = await web3.eth.accounts.signTransaction(tx, account);
-            const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+            const amounts = Object.keys(inputMapping);
+            const randomIndex = Math.floor(Math.random() * amounts.length);
+            const amountIn = parseFloat(amounts[randomIndex]);
 
-            console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully swapped USDT to USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
-            break;
+            console.log(`${TEXT_COLORS.PURPLE}[${index}] Attempting to swap USDT to USDC for address: ${accountAddress}, Amount: ${amountIn} USDT${TEXT_COLORS.RESET_COLOR}`);
+
+            const deadline = Math.floor(Date.now() / 1000) + 60 * 20;
+            const inputs = [inputMapping[amountIn]];
+
+            await executeSwap(contract, accountAddress, inputs, deadline, index, account);
+
+            swapSuccessful = true;
         } catch (swapError) {
             attempts++;
             console.error(`${TEXT_COLORS.RED}[${index}] Swap attempt ${attempts} failed: ${swapError.message}.${TEXT_COLORS.RESET_COLOR}`);
 
-            if (attempts >= maxRetries && maxRetries !== 0) {
-                console.error(`${TEXT_COLORS.RED}[${index}] Max retries reached for swap. Skipping to next process.${TEXT_COLORS.RESET_COLOR}`);
-                break;
+            if (attempts < maxRetries) {
+                console.log(`${TEXT_COLORS.YELLOW}[${index}] Retrying swap...${TEXT_COLORS.RESET_COLOR}`);
+                await approveUnlimitedIfNeeded(account, USDT_ADDRESS, UNIVERSAL_ROUTER_ADDRESS, index);
+                await new Promise(resolve => setTimeout(resolve, 5000));
+            } else {
+                console.error(`${TEXT_COLORS.RED}[${index}] Swap failed after ${maxRetries} attempts. Skipping to next process.${TEXT_COLORS.RESET_COLOR}`);
             }
-
-            console.log(`${TEXT_COLORS.YELLOW}[${index}] Retrying swap...${TEXT_COLORS.RESET_COLOR}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
         }
+    }
+}
+
+async function executeSwap(contract, accountAddress, inputs, deadline, index, account) {
+    try {
+        const gasEstimate = await contract.methods.execute('0x00', inputs, deadline).estimateGas({ from: accountAddress });
+        const gasPrice = await web3.eth.getGasPrice();
+        const nonce = await web3.eth.getTransactionCount(accountAddress, 'pending');
+
+        const tx = {
+            from: accountAddress,
+            to: UNIVERSAL_ROUTER_ADDRESS,
+            gas: gasEstimate,
+            gasPrice: gasPrice,
+            nonce: nonce,
+            data: contract.methods.execute('0x00', inputs, deadline).encodeABI()
+        };
+
+        const signedTx = await web3.eth.accounts.signTransaction(tx, account);
+        const receipt = await web3.eth.sendSignedTransaction(signedTx.rawTransaction);
+
+        console.log(`${TEXT_COLORS.PURPLE}[${index}] Successfully swapped USDT to USDC. Transaction Hash: ${receipt.transactionHash}${TEXT_COLORS.RESET_COLOR}`);
+    } catch (error) {
+        console.error(`${TEXT_COLORS.RED}[${index}] Error executing swap: ${error.message}${TEXT_COLORS.RESET_COLOR}`);
+        throw error; // Re-throw the error to handle it in the calling function
     }
 }
 
