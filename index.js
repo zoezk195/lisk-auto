@@ -182,6 +182,7 @@ const TEXT_COLORS = {
     CYAN: '\x1b[36m',
     GREEN: '\x1b[32m',
     RED: '\x1b[31m',
+    BRIGHT_GREEN: '\x1b[92m',
     RESET_COLOR: '\x1b[0m'
 };
 
@@ -282,6 +283,45 @@ const claimpayload = (address, taskId) => ({
         }
     }
 });
+
+async function fetchPointsAndRank(address, axiosInstance, index) {
+    try {
+        const payload = {
+            "query": `
+                query AirdropUser($filter: UserFilter!) {
+                    userdrop {
+                        user(filter: $filter) {
+                            rank
+                            points
+                        }
+                    }
+                }
+            `,
+            "variables": {
+                "filter": {
+                    "address": address
+                }
+            }
+        };
+
+        const response = await axiosInstance.post("https://portal-api.lisk.com/graphql", payload, {
+            'headers': {
+                'Content-Type': "application/json",
+                'Accept': "application/json",
+                'User-Agent': "Mozilla/5.0"
+            }
+        });
+
+        const user = response.data?.data?.userdrop?.user;
+        if (user) {
+            console.log(`${TEXT_COLORS.GREEN}[${index}] Total Points: ${TEXT_COLORS.BRIGHT_GREEN}${user.points}${TEXT_COLORS.GREEN}, Rank: ${TEXT_COLORS.BRIGHT_GREEN}${user.rank}${TEXT_COLORS.RESET_COLOR}`);
+        }
+        return user;
+    } catch (error) {
+        console.error(`Error fetching points and rank: ${error.response?.data || error.message}`);
+        return null;
+    }
+}
 
 async function executeWrapETH(account, amount, index, maxRetries) {
     let attempts = 0;
@@ -908,6 +948,12 @@ async function startCycle(filePath) {
     const executeTransactions = processOption === '1' || processOption === '2';
     const claimTasks = processOption === '1' || processOption === '3';
 
+    const showPointsAndRankAnswer = await askQuestion(
+        `${TEXT_COLORS.GREEN}Do you want to show total points and rank after processing each account? (y/n): ${TEXT_COLORS.RESET_COLOR}${TEXT_COLORS.CYAN}`,
+        ['y', 'n']
+    );
+    const showPointsAndRank = showPointsAndRankAnswer === 'y';
+
     let txOptions = {
         sendToSelf: false,
         wrapUnwrap: false,
@@ -968,12 +1014,15 @@ async function startCycle(filePath) {
 
     let proxies = [];
     if (useProxy) {
-        proxies = fs.readFileSync('proxy.txt', 'utf-8').split('\n').filter(Boolean).map(proxy => {
-            if (!proxy.startsWith('http://') && !proxy.startsWith('https://') && !proxy.startsWith('socks5://')) {
-                return `http://${proxy}`;
-            }
-            return proxy;
-        });
+        proxies = fs.readFileSync('proxy.txt', 'utf-8')
+            .split('\n')
+            .filter(Boolean)
+            .map(proxy => {
+                if (!proxy.startsWith('http://') && !proxy.startsWith('https://') && !proxy.startsWith('socks5://')) {
+                    return `http://${proxy}`;
+                }
+                return proxy;
+            });
 
         if (proxies.length === 0) {
             console.error(`${TEXT_COLORS.RED}Proxy list is empty. Please add proxies to proxy.txt and try again.${TEXT_COLORS.RESET_COLOR}`);
@@ -993,18 +1042,24 @@ async function startCycle(filePath) {
         ['1', '2']
     );
 
-    const retryCountAnswer = await askQuestion(
-        `${TEXT_COLORS.GREEN}Enter the number of retries for TX errors (0 for infinite retries, 'none' for no retries): ${TEXT_COLORS.RESET_COLOR}${TEXT_COLORS.CYAN}`
-    );
-
     let maxRetries;
-    if (retryCountAnswer.toLowerCase() === 'none') {
-        maxRetries = 0;
-    } else {
-        maxRetries = parseInt(retryCountAnswer, 10);
-        if (isNaN(maxRetries)) {
-            console.error(`${TEXT_COLORS.RED}Invalid input. Defaulting to no retries.${TEXT_COLORS.RESET_COLOR}`);
+    while (true) {
+        const retryCountAnswer = await askQuestion(
+            `${TEXT_COLORS.GREEN}Enter the number of retries for TX errors (0 for infinite retries, 'none' for no retries): ${TEXT_COLORS.RESET_COLOR}${TEXT_COLORS.CYAN}`
+        );
+
+        const trimmed = retryCountAnswer.trim().toLowerCase();
+        if (trimmed === 'none') {
             maxRetries = 0;
+            break;
+        } else {
+            const parsed = parseInt(trimmed, 10);
+            if (!trimmed || isNaN(parsed)) {
+                console.log(`${TEXT_COLORS.RED}Invalid input. Please enter a number or 'none'.${TEXT_COLORS.RESET_COLOR}`);
+            } else {
+                maxRetries = parsed;
+                break;
+            }
         }
     }
 
@@ -1084,6 +1139,11 @@ async function startCycle(filePath) {
 
             if (txOptions.supplyUSDC71Times) {
                 await processSupplyUSDC71Times(privateKey, i + 1, usdcAmounts.supplyAmount71Times);
+            }
+
+            if (showPointsAndRank) {
+                const accountObj = web3.eth.accounts.privateKeyToAccount(privateKey);
+                await fetchPointsAndRank(accountObj.address, axiosInstance, i + 1);
             }
         }
         console.log(`${TEXT_COLORS.GREEN}Script cycle complete${TEXT_COLORS.RESET_COLOR}`);
