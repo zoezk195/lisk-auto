@@ -6,7 +6,9 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const { ethAmountRange, delay, unwarpPercentage, usdtAmounts, usdcAmounts } = require('./config');
 
+// Check how to know this address
 const WETH_ADDRESS = '0x4200000000000000000000000000000000000006';
+// What is abi
 const WETH_ABI = [
     {
         constant: false,
@@ -50,6 +52,7 @@ const BORROW_CONTRACT_ABI = [
     }
 ];
 
+// What is router? Router address
 const UNIVERSAL_ROUTER_ADDRESS = '0x447B8E40B0CdA8e55F405C86bC635D02d0540aB8';
 const UNIVERSAL_ROUTER_ABI = [
     {
